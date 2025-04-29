@@ -39,24 +39,17 @@ if ! command -v pyenv &>/dev/null; then
   source ~/.zshrc
 fi
 
-# Install Python 3.9.13 via pyenv
-pyenv install 3.9.13
-pyenv local 3.9.13
+# Run the build script
+echo "Building Docker image..."
+cd AnkiAPI/docker && ./build.sh 
 
-# Manage virtual environment
-venv_dir="./user_files/venv"
-if [ -d "$venv_dir" ]; then
-  echo "$venv_dir exists. Deleting it..."
-  rm -rf "$venv_dir"
-fi
-python -m venv ./user_files/venv
-. ./user_files/venv/bin/activate
+
+uv venv
+source .venv/bin/activate
 
 # Install project dependencies
 uv pip install .
 
-deactivate
+which python
+which uv
 
-# Run the build script
-echo "Building Docker image..."
-cd AnkiAPI/docker && ./build.sh 
