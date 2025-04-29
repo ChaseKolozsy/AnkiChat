@@ -1,0 +1,19 @@
+{
+    "mcpServers": {
+      "Anki Operations": {
+        "command": "<path_to_uv_binary>/uv>",
+        "args": [
+          "run",
+          "--with",
+          "mcp[cli]",
+          "mcp",
+          "run",
+          "<path_to_venv>/anki_mcp_server.py"
+        ],
+        "env": {
+          "VIRTUAL_ENV": "<path_to_venv>/.venv",
+          "PATH": "<path_to_venv>/.venv/bin:${PATH}"
+        }
+      }
+    }
+  }
