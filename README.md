@@ -82,7 +82,7 @@ you will copy these paths and put it into the config replacing the `<path_to_ven
   }
 ```
 
-If you want to use  anki_mcp_server.py with Claude Desktop or Cursor even, or any other service that supports mcp and allows a config like this, you can simply copy the Anki Operations section and paste it into the mcp config file of the other service underneath the other tool names (make sure to add a comma after the last tool name in the previous service's mcpServers section before adding this new one as there has to be a comma between each server entry/member in the mcpServers section).
+If you want to use  anki_mcp_server.py with Claude Desktop or Cursor even, or any other service that supports mcp and allows a config like this, you can simply copy the Anki Operations section and paste it into the mcp config file of the other service underneath the other tool names (make sure to add a comma after the last tool name in the previous service's mcpServers section before adding this new one as there has to be a comma between each server entry/member in the mcpServers section). For a desktop app that isn't claude or cursor, maybe try: [https://github.com/daodao97/chatmcp]
 
 ```json
 {
