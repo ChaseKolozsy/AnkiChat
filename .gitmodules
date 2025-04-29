@@ -4,3 +4,6 @@
 [submodule "AnkiClient"]
 	path = AnkiClient
 	url = https://github.com/ChaseKolozsy/AnkiClient.git
+[submodule "chatmcp"]
+	path = chatmcp
+	url = https://github.com/ChaseKolozsy/chatmcp.git
