@@ -121,3 +121,5 @@ If you want to use  anki_mcp_server.py with Claude Desktop or Cursor even, or an
 - AI-assisted flashcard creation
 - Smart study planning
 - Card quality assessment
+- Integration with chatmcp desktop app for enhanced AI chat functionality
+- AnkiAPI utilizes the core Anki engine under the hood for reliable flashcard management
