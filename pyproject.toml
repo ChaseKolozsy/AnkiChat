@@ -1,0 +1,57 @@
+[project]
+name = "anki-chat"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10,<3.11"
+dependencies = [
+    "debugpy",
+    "flask==2.2.2",
+    "psycopg2-binary",
+    "python-dotenv==1.0.0",
+    "openai",
+    "jsonschema==4.22.0",
+    "requests",
+    "PyYAML",
+    "anthropic",
+    "nltk",
+    "pydantic",
+    "typing",
+    "ollama",
+    "wikipedia",
+    "fal-client",
+    "mistralai",
+    "ipython",
+    "google-genai",
+    "fuzzywuzzy",
+    "python-Levenshtein",
+    "networkx",
+    "graphviz",
+    "groq",
+    "together",
+    "datasets",
+    "fire",
+    "loguru",
+    "typer",
+    "rich",
+    "flask-cors",
+    "flask",
+    "uvicorn",
+    "fastapi",
+    "pandas",
+    "epitran",
+    "python-multipart",
+    "google-generativeai",
+    "ipdb",
+    "docker",
+    "httpx",
+    "psutil",
+    "requests",
+    "sqlalchemy",
+    "asyncpg",
+    "mcp"
+]
+
+[tool.setuptools]
+packages = ["AnkiAPI", "AnkiClient"]
+

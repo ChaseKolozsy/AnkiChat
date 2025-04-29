@@ -1,0 +1,6 @@
+[submodule "AnkiApi"]
+	path = AnkiApi
+	url = https://github.com/ChaseKolozsy/AnkiApi.git
+[submodule "AnkiClient"]
+	path = AnkiClient
+	url = https://github.com/ChaseKolozsy/AnkiClient.git
