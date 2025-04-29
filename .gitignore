@@ -63,3 +63,5 @@ htmlcov/
 
 # Docker
 docker-compose.override.yml 
+
+last_commit.txt
