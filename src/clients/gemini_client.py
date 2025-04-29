@@ -269,13 +269,14 @@ class GeminiMCPClient:
 async def main():
     """Main function to run the Gemini MCP client"""
     client = GeminiMCPClient()
-    server_script = "src/mcp_servers/anki-mcp/anki_mcp_server.py" # Default or get from args
+    from pathlib import Path
+    server_script = Path(__file__).parent.parent/ "servers" / "anki_mcp_server.py"
     try:
-        print(f"Attempting to connect to MCP server: {server_script}")
-        await client.connect_to_server(server_script)
+        print(f"Attempting to connect to MCP server: {str(server_script)}")
+        await client.connect_to_server(str(server_script))
         await client.chat_loop()
     except FileNotFoundError:
-        print(f"\nError: Server script not found at {server_script}") # Precede with newline
+        print(f"\nError: Server script not found at {str(server_script)}") # Precede with newline
     except ConnectionRefusedError:
         print("\nError: Connection to MCP server refused. Is the server running?") # Precede with newline
     except Exception as e:

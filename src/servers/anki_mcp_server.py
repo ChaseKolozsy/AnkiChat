@@ -1,23 +1,18 @@
 import sys
 import os
 from pathlib import Path
+
+# Add the project root to the path to allow importing AnkiClient
+project_root = Path(__file__).parents[2]  # Go up two directories from current file
+sys.path.append(str(project_root))
+
+from AnkiClient.src.operations import card_ops, deck_ops, note_ops, user_ops, study_ops, import_ops, export_ops, db_ops
 from mcp.server.fastmcp import FastMCP
-
-# Calculate the project root (AnkiChat directory) robustly
-project_root = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(project_root)) # Add AnkiChat root
-
-# Correct path to AnkiClient source within the AnkiChat project
-anki_client_src_path = project_root / "AnkiClient" / "src"
-sys.path.append(str(anki_client_src_path)) # Add AnkiClient/src
-
-# Import operations modules (should work now)
-from operations import card_ops, deck_ops, note_ops, user_ops, study_ops, import_ops, export_ops, db_ops
-BASE_URL = 'http://localhost:5001/api'
 
 # Initialize the MCP server
 mcp = FastMCP("Anki Operations")
 
+BASE_URL = 'http://localhost:5001/api'
 MODE = "simple_study"
 
 #

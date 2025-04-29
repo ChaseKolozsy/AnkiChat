@@ -147,10 +147,11 @@ class MCPClient:
 
 
 async def main():
-
     client = MCPClient()
+    from pathlib import Path
+    server_script = Path(__file__).parent.parent/ "servers" / "anki_mcp_server.py"
     try:
-        await client.connect_to_server("src/mcp_servers/anki-mcp/anki_mcp_server.py")
+        await client.connect_to_server(str(server_script))
         await client.chat_loop()
     finally:
         await client.cleanup()
