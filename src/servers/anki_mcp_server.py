@@ -153,12 +153,13 @@ def delete_card(card_id: int, username: str) -> dict:
     return card_ops.delete_card(card_id=card_id, username=username)
 
 @mcp.tool()
-def get_cards_by_ease_(username: str, deck_id: int, min_reviews: int = 3, max_factor: int = 2000, min_ratio: float = 0.2, include_suspended: bool = False, include_fields: bool = True) -> dict:
+def get_cards_by_ease_(username: str, deck_id: int, min_reviews: int = 3, min_factor: int = 2000, max_factor: int = 2750, min_ratio: float = 0.2, include_suspended: bool = False, include_fields: bool = True) -> dict:
     '''
     Get difficult cards based on criteria like reviews, ease factor, and review-to-interval ratio.
     - username (str): The user who owns the cards.
     - deck_id (int): The deck to search.
     - min_reviews (int): Minimum number of reviews.
+    - min_factor (int): Minimum ease factor (in permille). 2300, 2500, 2100, 2700, etc
     - max_factor (int): Maximum ease factor (in permille). 2300, 2500, 2100, 2700, etc
     - min_ratio (float): Minimum reviews-to-interval ratio.
     - include_suspended (bool): Whether to include suspended cards.
