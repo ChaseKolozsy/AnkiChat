@@ -84,12 +84,12 @@ def get_cards_by_tag(tag: str, username: str) -> dict:
     return card_ops.get_cards_by_tag(tag=tag, username=username)
 
 @mcp.tool()
-def get_cards_by_state(deck_id: int, state: str, username: str) -> dict:
+def get_cards_by_state(deck_id: int, state: str, username: str, include_fields: bool = False) -> dict:
     """
     Get all cards in a deck for a user filtered by their learning state.
     - deck_id (int): The deck to search.
-    - state (str): Card state ('new', 'learning', 'review', etc.).
     - username (str): The user who owns the cards.
+    - include_fields (bool, optional): Whether to include the fields of the cards. Defaults to False.
     - state (str): Card state ('new', 'learning', 'review', etc.).
         'new'
         'learning'
@@ -102,7 +102,22 @@ def get_cards_by_state(deck_id: int, state: str, username: str) -> dict:
     Returns: dict/list of cards in the specified state.
     Use this to select cards for study or review sessions.
     """
-    return card_ops.get_cards_by_state(deck_id=deck_id, state=state, username=username)
+    if include_fields:
+        return card_ops.get_cards_by_state(deck_id=deck_id, state=state, username=username)
+    else:
+        return card_ops.get_cards_by_state_without_fields(deck_id=deck_id, state=state, username=username)
+    
+@mcp.tool()
+def get_cards_by_tag_and_state(tag: str, state: str, username: str, include_fields: bool = False) -> dict:
+    """
+    Get all cards for a user that have a specific tag and are in a specific state.
+    refer to get_cards_by_state for the state values.
+    include_fields is a boolean that defaults to False.
+    """
+    if include_fields:
+        return card_ops.get_cards_by_tag_and_state(tag=tag, state=state, username=username)
+    else:
+        return card_ops.get_cards_by_tag_and_state_without_fields(tag=tag, state=state, username=username)
 
 @mcp.tool()
 def suspend_card(card_id: int, username: str) -> dict:
