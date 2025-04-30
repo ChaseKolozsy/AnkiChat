@@ -166,7 +166,7 @@ def get_cards_by_ease_(username: str, deck_id: int, min_reviews: int = 3, min_fa
     - include_fields (bool): Whether to include card fields.
     Returns: List of difficult cards.
     '''
-    return card_ops.get_cards_by_ease_(username=username, deck_id=deck_id, min_reviews=min_reviews, max_factor=max_factor, min_ratio=min_ratio, include_suspended=include_suspended, include_fields=include_fields)
+    return card_ops.get_cards_by_ease_(username=username, deck_id=deck_id, min_reviews=min_reviews, min_factor=min_factor, max_factor=max_factor, min_ratio=min_ratio, include_suspended=include_suspended, include_fields=include_fields)
 
 @mcp.tool()
 def get_cards_by_learning_metrics(username: str, deck_id: int, min_reviews: Optional[int] = None, max_reviews: Optional[int] = None, min_interval: Optional[int] = None, max_interval: Optional[int] = None, min_factor: Optional[int] = None, max_factor: Optional[int] = None, min_lapses: Optional[int] = None, max_lapses: Optional[int] = None, min_ratio: Optional[float] = None, max_ratio: Optional[float] = None, include_suspended: bool = False, include_new: bool = False, include_fields: bool = True, limit: int = 100) -> dict:
