@@ -90,6 +90,15 @@ def get_cards_by_state(deck_id: int, state: str, username: str) -> dict:
     - deck_id (int): The deck to search.
     - state (str): Card state ('new', 'learning', 'review', etc.).
     - username (str): The user who owns the cards.
+    - state (str): Card state ('new', 'learning', 'review', etc.).
+        'new'
+        'learning'
+        'due'
+        'suspended'
+        'manually_buried'
+        'sibling_buried'
+        'day_learn_relearn'
+        'preview'
     Returns: dict/list of cards in the specified state.
     Use this to select cards for study or review sessions.
     """
