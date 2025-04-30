@@ -1,6 +1,7 @@
 import sys
 import os
 from pathlib import Path
+from typing import Optional
 
 # Add the project root to the path to allow importing AnkiClient
 project_root = Path(__file__).parents[2]  # Go up two directories from current file
@@ -150,6 +151,35 @@ def delete_card(card_id: int, username: str) -> dict:
     Use this to remove unwanted or duplicate cards.
     """
     return card_ops.delete_card(card_id=card_id, username=username)
+
+@mcp.tool()
+def get_difficult_cards(username: str, deck_id: int, min_reviews: int = 3, max_factor: int = 2000, min_ratio: float = 0.2, include_suspended: bool = False, include_fields: bool = True) -> dict:
+    '''
+    Get difficult cards based on criteria like reviews, ease factor, and review-to-interval ratio.
+    - username (str): The user who owns the cards.
+    - deck_id (int): The deck to search.
+    - min_reviews (int): Minimum number of reviews.
+    - max_factor (int): Maximum ease factor (in permille).
+    - min_ratio (float): Minimum reviews-to-interval ratio.
+    - include_suspended (bool): Whether to include suspended cards.
+    - include_fields (bool): Whether to include card fields.
+    Returns: List of difficult cards.
+    '''
+    return card_ops.get_difficult_cards(username=username, deck_id=deck_id, min_reviews=min_reviews, max_factor=max_factor, min_ratio=min_ratio, include_suspended=include_suspended, include_fields=include_fields)
+
+@mcp.tool()
+def get_cards_by_learning_metrics(username: str, deck_id: int, min_reviews: Optional[int] = None, max_reviews: Optional[int] = None, min_interval: Optional[int] = None, max_interval: Optional[int] = None, min_factor: Optional[int] = None, max_factor: Optional[int] = None, min_lapses: Optional[int] = None, max_lapses: Optional[int] = None, min_ratio: Optional[float] = None, max_ratio: Optional[float] = None, include_suspended: bool = False, include_new: bool = False, include_fields: bool = True, limit: int = 100) -> dict:
+    '''
+    Get cards filtered by various learning metrics.
+    - username (str): The user who owns the cards.
+    - deck_id (int): The deck to search.
+    - min_reviews, max_reviews, etc.: Filters for specific metrics.
+    - include_suspended, include_new: Whether to include those card types.
+    - include_fields: Whether to include card fields.
+    - limit: Maximum number of cards to return.
+    Returns: List of filtered cards.
+    '''
+    return card_ops.get_cards_by_learning_metrics(username=username, deck_id=deck_id, min_reviews=min_reviews, max_reviews=max_reviews, min_interval=min_interval, max_interval=max_interval, min_factor=min_factor, max_factor=max_factor, min_lapses=min_lapses, max_lapses=max_lapses, min_ratio=min_ratio, max_ratio=max_ratio, include_suspended=include_suspended, include_new=include_new, include_fields=include_fields, limit=limit)
 
 #
 # Deck Operations
