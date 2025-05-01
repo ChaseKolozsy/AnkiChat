@@ -383,10 +383,12 @@ def sync_db(profile_name: str, sync_media: bool = False, upload: bool = False) -
     import dotenv
     import json
     dotenv.load_dotenv()
-    response = sync_user_login(profile_name, upload)
-    hkey = response.get('hkey')
-    endpoint = response.get('new_endpoint')
-    return db_ops.sync_db(profile_name, hkey, endpoint, sync_media, upload)
+    hkey = os.getenv('ANKI_HKEY')
+    endpoint = os.getenv('ANKI_ENDPOINT')
+    response = db_ops.sync_db(profile_name, hkey, endpoint, sync_media, upload)
+    response['hkey'] = hkey
+    response['endpoint'] = endpoint
+    return response
 
 #
 # Study Operations
@@ -419,8 +421,8 @@ def study(*, deck_id: int, action: str, username: str, base_url: str = BASE_URL)
     If the instructions have not been supplied to you, then prompt the user to provide them.
     """
     response_data, response_status_code = study_ops.study(deck_id=deck_id, action=action, username=username)
-    if 'action' == 'close':
-        sync_message = sync_db(profile_name=username, sync_media=False, upload=True)
+    if 'close' in action or action in 'close' or action.startswith('close') or action.endswith('close'):
+        sync_message = sync_db(profile_name=username, sync_media=False, upload=False)
         response_data['sync_message'] = sync_message
     if MODE == "simple_study":
         return response_data, response_status_code
