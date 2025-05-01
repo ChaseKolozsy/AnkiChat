@@ -56,6 +56,8 @@ click==8.1.8
     #   uvicorn
 datasets==3.5.1
     # via anki-chat (pyproject.toml)
+debugpy==1.8.14
+    # via anki-chat (pyproject.toml)
 decorator==5.2.1
     # via
     #   ipdb

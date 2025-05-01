@@ -419,6 +419,9 @@ def study(*, deck_id: int, action: str, username: str, base_url: str = BASE_URL)
     If the instructions have not been supplied to you, then prompt the user to provide them.
     """
     response_data, response_status_code = study_ops.study(deck_id=deck_id, action=action, username=username)
+    if 'action' == 'close':
+        sync_message = sync_db(profile_name=username, sync_media=False, upload=True)
+        response_data['sync_message'] = sync_message
     if MODE == "simple_study":
         return response_data, response_status_code
     elif MODE.startswith("curate"):
