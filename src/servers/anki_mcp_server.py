@@ -514,8 +514,8 @@ def supply_feedback_for_cards(username: str, deck_id: int, feedback: dict[int, s
     """
     count = len(feedback)
     response, status_code = study(deck_id=deck_id, action="start", username=username)
-    card_id = response['card_id']
-    ease = int(feedback[card_id])
+    card_id = int(response['card_id'])
+    ease = str(feedback[card_id])
     response = flip_and_submit(deck_id=deck_id, action=ease, username=username)
     for _ in range(count - 1):
         card_id = int(response['card_id'])
