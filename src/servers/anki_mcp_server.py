@@ -512,14 +512,19 @@ def supply_feedback_for_cards(username: str, deck_id: int, feedback: dict[int, s
     for the feedback you are to supply a string version of '1', '2', '3', or '4'
     where 1 is again, 2 is hard, 3 is good, and 4 is easy.
     """
+    def get_ease(card_id: int) -> str:
+        try:
+            return str(feedback[card_id])
+        except:
+            return str(feedback[str(card_id)])
     count = len(feedback)
     response, status_code = study(deck_id=deck_id, action="start", username=username)
-    card_id = int(response['card_id'])
-    ease = str(feedback[card_id])
+    card_id = response['card_id']
+    ease = get_ease(card_id)
     response = flip_and_submit(deck_id=deck_id, action=ease, username=username)
     for _ in range(count - 1):
-        card_id = int(response['card_id'])
-        ease = str(feedback[card_id])
+        card_id = str(response['card_id'])
+        ease = get_ease(card_id)
         response = flip_and_submit(deck_id=deck_id, action=ease, username=username)
     response, status_code = study(deck_id=deck_id, action="close", username=username)
     return response
