@@ -453,7 +453,48 @@ def flip_and_submit(deck_id: int, action: str, username: str) -> dict:
     submit_response = study(deck_id=deck_id, action=action, username=username)
     return submit_response
 
+@mcp.tool()
+def create_custom_study_session(username: str, deck_id: int, custom_study_params: dict, leave_open: bool = False) -> dict:
+    """
+    Create a custom study session for a user on a specific deck.
+    - username (str): The user who owns the deck.
+    - deck_id (int): The deck to study.
+    - custom_study_params (dict): The custom study parameters.
+    - leave_open (bool, optional): Whether to leave the study session open after completion.
+    i.e.:
+    custom_study_params = {
+        "new_limit_delta": 0,
+        "cram": {
+            "kind": "CRAM_KIND_DUE",
+            "card_limit": count,
+            "tags_to_include": [],
+            "tags_to_exclude": []
+        }
+    }
+    """
+    response, status_code =  study_ops.create_custom_study_session(username=username, deck_id=deck_id, custom_study_params=custom_study_params)
+    if not leave_open:
+        created_deck_id = response['created_deck_id']
+        _ = study(deck_id=created_deck_id, action="close", username=username)
+    return response
 
+@mcp.tool()
+def mark_all_due_cards_as_good(username: str, deck_id: int, count: int = 1000) -> dict:
+    """
+    Mark all due cards in a deck as good.
+    - username (str): The user who owns the deck.
+    - deck_id (int): The deck to mark.
+    Returns: dict with status.
+    Use this to mark all due cards in a deck as good.
+    """
+    try:
+        _ = study(deck_id=deck_id, action="start", username=username)
+        for i in range(count):
+            _ = flip_and_submit(deck_id=deck_id, action="3", username=username)
+        _ = study(deck_id=deck_id, action="close", username=username)
+        return {"status": "success"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 #
 # Import/Export Operations
