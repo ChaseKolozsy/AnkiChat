@@ -507,6 +507,11 @@ def supply_feedback_for_cards(username: str, deck_id: int, feedback: dict[int, s
     - username (str): The user who owns the deck.
     - deck_id (int): The deck to supply feedback for.
     - feedback (dict[int, str]): A dictionary of the card id and the feedback to supply.
+    - you are supposed to supply the number, not the word.
+    - 1: again
+    - 2: hard
+    - 3: good
+    - 4: easy
     """
     count = len(feedback)
     response = study(deck_id=deck_id, action="start", username=username)
