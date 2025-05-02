@@ -520,13 +520,15 @@ def supply_feedback_for_cards(username: str, deck_id: int, feedback: dict[int, s
     try:
         count = len(feedback)
         response, _ = study(deck_id=deck_id, action="start", username=username)
-        card_id = response['card_id']
-        ease = get_ease(card_id)
-        response, _ = flip_and_submit(deck_id=deck_id, action=ease, username=username)
-        for _ in range(count - 1):
+        if 'card_id' in response:
             card_id = response['card_id']
             ease = get_ease(card_id)
             response, _ = flip_and_submit(deck_id=deck_id, action=ease, username=username)
+            for _ in range(count - 1):
+                if 'card_id' in response:
+                    card_id = response['card_id']
+                    ease = get_ease(card_id)
+                    response, _ = flip_and_submit(deck_id=deck_id, action=ease, username=username)
         response, _ = study(deck_id=deck_id, action="close", username=username)
         return response
     except Exception as e:
