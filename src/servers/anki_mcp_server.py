@@ -260,26 +260,114 @@ def delete_deck(deck_id: int, username: str) -> dict:
 #
 # Note Operations
 #
+@mcp.tool()
+def get_notetypes(username: str) -> dict:
+    """
+    Get all note types for a user.
+    - username (str): The user who owns the note types.
+    Returns: dict with note types.
+    """
+    return note_ops.get_notetypes(username)
 
 @mcp.tool()
-def create_note(username: str, note_type: str, deck_id: int, fields: dict, tags: list = None) -> dict:
+def create_notetype_with_fields(username: str, name: str, fields: dict, base_notetype_id: int, qfmt: str, afmt: str) -> dict:
     """
-    Create a new note for a user in a specific deck and note type. Notes are the underlying data for cards.
-    - username (str): The user who owns the note.
-    - note_type (str): The note type/template name.
-    - deck_id (int): The deck to add the note to.
-    - fields (dict): Field values for the note (e.g., {"Front": "Q", "Back": "A"}).
-    - tags (list, optional): Tags to attach to the note.
-    Returns: dict with note and card IDs, or error info.
-    Use this to add new content that may generate one or more cards.
+    Create a new note type with fields for a user.
+    - username (str): The user who owns the note types.
+    - name (str): The name of the new note type.
+    - fields (dict): The fields of the new note type.
     """
-    return note_ops.create_note(
-        username=username,
-        note_type=note_type,
-        deck_id=deck_id,
-        fields=fields,
-        tags=tags
-    )
+    return note_ops.create_notetype_with_fields(username, name, fields, base_notetype_id, qfmt, afmt)
+
+
+@mcp.tool()
+def get_notetype_id_by_card_id(card_id, username):
+    """
+    Get the id of the note type for a card for a user.
+    - card_id (int): The id of the card.
+    - username (str): The user who owns the card.
+    """
+    return note_ops.get_notetype_id_by_card_id(card_id, username)
+
+@mcp.tool()
+def add_template_to_notetype(notetype_id, template_name, qfmt, afmt, username):
+    """
+    Add a template to a note type for a user.
+    - notetype_id (int): The id of the note type.
+    - template_name (str): The name of the template to add.
+    - qfmt (str): The question format of the template.
+    - afmt (str): The answer format of the template.
+    """
+    return note_ops.add_template_to_notetype(notetype_id, template_name, qfmt, afmt, username)
+
+@mcp.tool()
+def get_notetype_css(notetype_id, username):
+    """
+    Get the CSS for a note type for a user.
+    - notetype_id (int): The id of the note type.
+    - username (str): The user who owns the note type.
+    """
+    return note_ops.get_notetype_css(notetype_id, username)
+
+@mcp.tool()
+def update_notetype_css(notetype_id, new_css, username):
+    """
+    Update the CSS for a note type for a user.
+    - notetype_id (int): The id of the note type.
+    - new_css (str): The new CSS for the note type.
+    """
+    return note_ops.update_notetype_css(notetype_id, new_css, username)
+
+
+@mcp.tool()
+def get_notetype_fields(notetype_id, username):
+    """
+    Get the fields for a note type for a user.
+    - notetype_id (int): The id of the note type.
+    - username (str): The user who owns the note type.
+    """
+    return note_ops.get_notetype_fields(notetype_id, username)
+
+@mcp.tool()
+def add_field_to_notetype(notetype_id, field_name, username):
+    """
+    Add a field to a note type for a user.
+    - notetype_id (int): The id of the note type.
+    - field_name (str): The name of the field to add.
+    - username (str): The user who owns the note types.
+    """
+    return note_ops.add_field_to_notetype(notetype_id, field_name, username)
+
+@mcp.tool()
+def remove_field_from_notetype(notetype_id, field_name, username):
+    """
+    Remove a field from a note type for a user.
+    - notetype_id (int): The id of the note type.
+    - field_name (str): The name of the field to remove.
+    - username (str): The user who owns the note types.
+    """
+    return note_ops.remove_field_from_notetype(notetype_id, field_name, username)
+
+@mcp.tool()
+def get_sort_field(notetype_id, username):
+    """
+    Get the sort field for a note type for a user.
+    """
+    return note_ops.get_sort_field(notetype_id, username)
+
+@mcp.tool()
+def set_sort_field(notetype_id, field_name, username):
+    """
+    Set the sort field for a note type for a user.
+    """
+    return note_ops.set_sort_field(notetype_id, field_name, username)
+
+@mcp.tool()
+def reorder_fields(notetype_id, new_order, username):
+    """
+    Reorder the fields for a note type for a user.
+    """
+    return note_ops.reorder_fields(notetype_id, new_order, username)
 
 @mcp.tool()
 def get_note(note_id: int, username: str) -> dict:
