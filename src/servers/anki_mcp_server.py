@@ -74,23 +74,25 @@ def get_card_by_id(note_id: int, username: str) -> dict:
     return card_ops.get_card_by_id(note_id=note_id, username=username)
 
 @mcp.tool()
-def get_cards_by_tag(tag: str, username: str) -> dict:
+def get_cards_by_tag(tag: str, username: str, inclusions: list = None) -> dict:
     """
     Get all cards for a user that have a specific tag.
     - tag (str): The tag to filter by.
     - username (str): The user whose cards to search.
+    - inclusions (list, optional): List of field names to include in the fields dict.
     Returns: dict/list of cards with the tag.
     Use this to find or batch-process cards by topic or label.
     """
-    return card_ops.get_cards_by_tag(tag=tag, username=username)
+    return card_ops.get_cards_by_tag(tag=tag, username=username, inclusions=inclusions)
 
 @mcp.tool()
-def get_cards_by_state(deck_id: int, state: str, username: str, include_fields: bool = False) -> dict:
+def get_cards_by_state(deck_id: int, state: str, username: str, include_fields: bool = False, inclusions: list = None) -> dict:
     """
     Get all cards in a deck for a user filtered by their learning state.
     - deck_id (int): The deck to search.
     - username (str): The user who owns the cards.
     - include_fields (bool, optional): Whether to include the fields of the cards. Defaults to False.
+    - inclusions (list, optional): List of field names to include in the fields dict.
     - state (str): Card state ('new', 'learning', 'review', etc.).
         'new'
         'learning'
@@ -104,19 +106,20 @@ def get_cards_by_state(deck_id: int, state: str, username: str, include_fields: 
     Use this to select cards for study or review sessions.
     """
     if include_fields:
-        return card_ops.get_cards_by_state(deck_id=deck_id, state=state, username=username)
+        return card_ops.get_cards_by_state(deck_id=deck_id, state=state, username=username, inclusions=inclusions)
     else:
         return card_ops.get_cards_by_state_without_fields(deck_id=deck_id, state=state, username=username)
     
 @mcp.tool()
-def get_cards_by_tag_and_state(tag: str, state: str, username: str, include_fields: bool = False) -> dict:
+def get_cards_by_tag_and_state(tag: str, state: str, username: str, include_fields: bool = False, inclusions: list = None) -> dict:
     """
     Get all cards for a user that have a specific tag and are in a specific state.
     refer to get_cards_by_state for the state values.
     include_fields is a boolean that defaults to False.
+    inclusions (list, optional): List of field names to include in the fields dict.
     """
     if include_fields:
-        return card_ops.get_cards_by_tag_and_state(tag=tag, state=state, username=username)
+        return card_ops.get_cards_by_tag_and_state(tag=tag, state=state, username=username, inclusions=inclusions)
     else:
         return card_ops.get_cards_by_tag_and_state_without_fields(tag=tag, state=state, username=username)
 
@@ -153,7 +156,7 @@ def delete_card(card_id: int, username: str) -> dict:
     return card_ops.delete_card(card_id=card_id, username=username)
 
 @mcp.tool()
-def get_cards_by_ease_(username: str, deck_id: int, min_reviews: int = 3, min_factor: int = 2000, max_factor: int = 2750, min_ratio: float = 0.2, max_ratio: float = 1.0, include_suspended: bool = False, include_fields: bool = True) -> dict:
+def get_cards_by_ease_(username: str, deck_id: int, min_reviews: int = 3, min_factor: int = 2000, max_factor: int = 2750, min_ratio: float = 0.2, max_ratio: float = 1.0, include_suspended: bool = False, include_fields: bool = True, inclusions: list = None) -> dict:
     '''
     Get difficult cards based on criteria like reviews, ease factor, and review-to-interval ratio.
     - username (str): The user who owns the cards.
@@ -164,12 +167,13 @@ def get_cards_by_ease_(username: str, deck_id: int, min_reviews: int = 3, min_fa
     - min_ratio (float): Minimum reviews-to-interval ratio.
     - include_suspended (bool): Whether to include suspended cards.
     - include_fields (bool): Whether to include card fields.
+    - inclusions (list, optional): List of field names to include in the fields dict.
     Returns: List of difficult cards.
     '''
-    return card_ops.get_cards_by_ease_(username=username, deck_id=deck_id, min_reviews=min_reviews, min_factor=min_factor, max_factor=max_factor, min_ratio=min_ratio, max_ratio=max_ratio, include_suspended=include_suspended, include_fields=include_fields)
+    return card_ops.get_cards_by_ease_(username=username, deck_id=deck_id, min_reviews=min_reviews, min_factor=min_factor, max_factor=max_factor, min_ratio=min_ratio, max_ratio=max_ratio, include_suspended=include_suspended, include_fields=include_fields, inclusions=inclusions)
 
 @mcp.tool()
-def get_cards_by_learning_metrics(username: str, deck_id: int, min_reviews: Optional[int] = None, max_reviews: Optional[int] = None, min_interval: Optional[int] = None, max_interval: Optional[int] = None, min_factor: Optional[int] = None, max_factor: Optional[int] = None, min_lapses: Optional[int] = None, max_lapses: Optional[int] = None, min_ratio: Optional[float] = None, max_ratio: Optional[float] = None, include_suspended: bool = False, include_new: bool = False, include_fields: bool = True, limit: int = 100) -> dict:
+def get_cards_by_learning_metrics(username: str, deck_id: int, min_reviews: Optional[int] = None, max_reviews: Optional[int] = None, min_interval: Optional[int] = None, max_interval: Optional[int] = None, min_factor: Optional[int] = None, max_factor: Optional[int] = None, min_lapses: Optional[int] = None, max_lapses: Optional[int] = None, min_ratio: Optional[float] = None, max_ratio: Optional[float] = None, include_suspended: bool = False, include_new: bool = False, include_fields: bool = True, limit: int = 100, inclusions: list = None) -> dict:
     '''
     Get cards filtered by various learning metrics.
     - username (str): The user who owns the cards.
@@ -178,10 +182,10 @@ def get_cards_by_learning_metrics(username: str, deck_id: int, min_reviews: Opti
     - include_suspended, include_new: Whether to include those card types.
     - include_fields: Whether to include card fields.
     - limit: Maximum number of cards to return.
-    - ease here is by hundreds, 230, 250, 210, 270, etc.
+    - inclusions (list, optional): List of field names to include in the fields dict.
     Returns: List of filtered cards.
     '''
-    return card_ops.get_cards_by_learning_metrics(username=username, deck_id=deck_id, min_reviews=min_reviews, max_reviews=max_reviews, min_interval=min_interval, max_interval=max_interval, min_factor=min_factor, max_factor=max_factor, min_lapses=min_lapses, max_lapses=max_lapses, min_ratio=min_ratio, max_ratio=max_ratio, include_suspended=include_suspended, include_new=include_new, include_fields=include_fields, limit=limit)
+    return card_ops.get_cards_by_learning_metrics(username=username, deck_id=deck_id, min_reviews=min_reviews, max_reviews=max_reviews, min_interval=min_interval, max_interval=max_interval, min_factor=min_factor, max_factor=max_factor, min_lapses=min_lapses, max_lapses=max_lapses, min_ratio=min_ratio, max_ratio=max_ratio, include_suspended=include_suspended, include_new=include_new, include_fields=include_fields, limit=limit, inclusions=inclusions)
 
 #
 # Deck Operations
