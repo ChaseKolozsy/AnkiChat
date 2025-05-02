@@ -517,17 +517,20 @@ def supply_feedback_for_cards(username: str, deck_id: int, feedback: dict[int, s
             return str(feedback[card_id])
         except:
             return str(feedback[str(card_id)])
-    count = len(feedback)
-    response, _ = study(deck_id=deck_id, action="start", username=username)
-    card_id = response['card_id']
-    ease = get_ease(card_id)
-    response, _ = flip_and_submit(deck_id=deck_id, action=ease, username=username)
-    for _ in range(count - 1):
-        card_id = str(response['card_id'])
+    try:
+        count = len(feedback)
+        response, _ = study(deck_id=deck_id, action="start", username=username)
+        card_id = response['card_id']
         ease = get_ease(card_id)
         response, _ = flip_and_submit(deck_id=deck_id, action=ease, username=username)
-    response, _ = study(deck_id=deck_id, action="close", username=username)
-    return response
+        for _ in range(count - 1):
+            card_id = response['card_id']
+            ease = get_ease(card_id)
+            response, _ = flip_and_submit(deck_id=deck_id, action=ease, username=username)
+        response, _ = study(deck_id=deck_id, action="close", username=username)
+        return response
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 #
 # Import/Export Operations
