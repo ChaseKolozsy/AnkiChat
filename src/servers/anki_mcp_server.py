@@ -507,20 +507,19 @@ def supply_feedback_for_cards(username: str, deck_id: int, feedback: dict[int, s
     - username (str): The user who owns the deck.
     - deck_id (int): The deck to supply feedback for.
     - feedback (dict[int, str]): A dictionary of the card id and the feedback to supply.
+    - the card id that you put in the dictionary is supposed to be an integer, not a string.
     - you are supposed to supply the number, not the word.
-    - 1: again
-    - 2: hard
-    - 3: good
-    - 4: easy
+    for the feedback you are to supply a string version of '1', '2', '3', or '4'
+    where 1 is again, 2 is hard, 3 is good, and 4 is easy.
     """
     count = len(feedback)
     response = study(deck_id=deck_id, action="start", username=username)
     card_id = response['card_id']
-    ease = feedback[card_id]
+    ease = int(feedback[card_id])
     response = flip_and_submit(deck_id=deck_id, action=ease, username=username)
     for _ in range(count - 1):
-        card_id = response['card_id']
-        ease = feedback[card_id]
+        card_id = int(response['card_id'])
+        ease = str(feedback[card_id])
         response = flip_and_submit(deck_id=deck_id, action=ease, username=username)
     response = study(deck_id=deck_id, action="close", username=username)
     return response
