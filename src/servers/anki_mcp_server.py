@@ -513,7 +513,7 @@ def supply_feedback_for_cards(username: str, deck_id: int, feedback: dict[int, s
     where 1 is again, 2 is hard, 3 is good, and 4 is easy.
     """
     count = len(feedback)
-    response = study(deck_id=deck_id, action="start", username=username)
+    response, status_code = study(deck_id=deck_id, action="start", username=username)
     card_id = response['card_id']
     ease = int(feedback[card_id])
     response = flip_and_submit(deck_id=deck_id, action=ease, username=username)
@@ -521,7 +521,7 @@ def supply_feedback_for_cards(username: str, deck_id: int, feedback: dict[int, s
         card_id = int(response['card_id'])
         ease = str(feedback[card_id])
         response = flip_and_submit(deck_id=deck_id, action=ease, username=username)
-    response = study(deck_id=deck_id, action="close", username=username)
+    response, status_code = study(deck_id=deck_id, action="close", username=username)
     return response
 
 #
