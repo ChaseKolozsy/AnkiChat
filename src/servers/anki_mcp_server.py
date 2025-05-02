@@ -309,6 +309,13 @@ def get_notetype_id_by_card_id(card_id: int, username: str) -> dict:
     return note_ops.get_notetype_id_by_card_id(card_id, username)
 
 @mcp.tool()
+def get_notetype_templates(notetype_id: int, username: str) -> dict:
+    """
+    Get the templates for a notetype for a user.
+    """
+    return note_ops.get_notetype_templates(notetype_id, username)
+
+@mcp.tool()
 def add_template_to_notetype(notetype_id: int, template_name: str, qfmt: str, afmt: str, username: str) -> dict:
     """
     Add a card template to a notetype for a user.
