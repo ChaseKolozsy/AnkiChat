@@ -583,18 +583,6 @@ def sync_db(profile_name: str, sync_media: bool = False, upload: bool = False) -
 #
 # Study Operations
 #
-
-@mcp.tool()
-def get_due_cards(deck_id: int, username: str) -> dict:
-    """
-    Get all cards in a deck that are due for review for a user.
-    - deck_id (int): The deck to check.
-    - username (str): The user who owns the deck.
-    Returns: dict/list of due cards.
-    Use this to select cards for a study session.
-    """
-    return study_ops.get_due_cards(deck_id=deck_id, username=username)
-
 @mcp.tool()
 def study(*, deck_id: int, action: str, username: str, base_url: str = BASE_URL) -> tuple[dict, int]:
     """
