@@ -657,24 +657,6 @@ def create_custom_study_session(username: str, deck_id: int, custom_study_params
     return response
 
 @mcp.tool()
-def mark_all_cards_as_good(username: str, deck_id: int, count: int = 1000) -> dict:
-    """
-    Mark all due cards in a deck as good.
-    - username (str): The user who owns the deck.
-    - deck_id (int): The deck to mark.
-    Returns: dict with status.
-    Use this to mark all due cards in a deck as good.
-    """
-    try:
-        _ = study(deck_id=deck_id, action="start", username=username)
-        for i in range(count):
-            _ = flip_and_submit(deck_id=deck_id, action="3", username=username)
-        _ = study(deck_id=deck_id, action="close", username=username)
-        return {"status": "success"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-@mcp.tool()
 def supply_feedback_for_cards(username: str, deck_id: int, feedback: dict[int, str]) -> dict:
     """
     Supply feedback for a list of cards.
