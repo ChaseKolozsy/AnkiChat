@@ -109,7 +109,7 @@ def get_cards_by_state(deck_id: int, state: str, username: str, include_fields: 
         return card_ops.get_cards_by_state(deck_id=deck_id, state=state, username=username, inclusions=inclusions)
     else:
         return card_ops.get_cards_by_state_without_fields(deck_id=deck_id, state=state, username=username)
-    
+
 @mcp.tool()
 def get_cards_by_tag_and_state(tag: str, state: str, username: str, include_fields: bool = False, inclusions: list = None) -> dict:
     """
@@ -273,7 +273,7 @@ def get_notetypes(username: str) -> dict:
 def create_notetype_with_fields(username: str, name: str, fields: list, base_notetype_id: int, qfmt: str = None, afmt: str = None) -> dict:
     """
     Create a new note type (notetype) with custom fields for a user.
-    
+
     Args:
         username (str): The user who owns the note types.
         name (str): The name of the new note type.
@@ -281,7 +281,7 @@ def create_notetype_with_fields(username: str, name: str, fields: list, base_not
         base_notetype_id (int): The ID of the base notetype to copy templates from (required).
         qfmt (str, optional): The question format for the first template. If not provided, defaults to '{{<first_field>}}'.
         afmt (str, optional): The answer format for the first template. If not provided, defaults to '{{FrontSide}}<hr id=answer>{{<second_field>}}'.
-    
+
     Example:
         create_notetype_with_fields(
             username="User 1",
@@ -299,7 +299,7 @@ def create_notetype_with_fields(username: str, name: str, fields: list, base_not
 def get_notetype_id_by_card_id(card_id: int, username: str) -> dict:
     """
     Get the notetype ID for a card for a user.
-    
+
     Args:
         card_id (int): The card's ID.
         username (str): The user who owns the card.
@@ -319,7 +319,7 @@ def get_notetype_templates(notetype_id: int, username: str) -> dict:
 def add_template_to_notetype(notetype_id: int, template_name: str, qfmt: str, afmt: str, username: str) -> dict:
     """
     Add a card template to a notetype for a user.
-    
+
     Args:
         notetype_id (int): The notetype's ID.
         template_name (str): The name of the new template.
@@ -341,7 +341,7 @@ def add_template_to_notetype(notetype_id: int, template_name: str, qfmt: str, af
 def get_notetype_css(notetype_id: int, username: str) -> dict:
     """
     Get the CSS for a notetype for a user.
-    
+
     Args:
         notetype_id (int): The notetype's ID.
         username (str): The user who owns the notetype.
@@ -354,7 +354,7 @@ def get_notetype_css(notetype_id: int, username: str) -> dict:
 def update_notetype_css(notetype_id: int, new_css: str, username: str) -> dict:
     """
     Update the CSS for a notetype for a user.
-    
+
     Args:
         notetype_id (int): The notetype's ID.
         new_css (str): The new CSS string.
@@ -373,7 +373,7 @@ def update_notetype_css(notetype_id: int, new_css: str, username: str) -> dict:
 def get_notetype_fields(notetype_id: int, username: str) -> dict:
     """
     Get the fields for a notetype for a user.
-    
+
     Args:
         notetype_id (int): The notetype's ID.
         username (str): The user who owns the notetype.
@@ -386,7 +386,7 @@ def get_notetype_fields(notetype_id: int, username: str) -> dict:
 def add_field_to_notetype(notetype_id: int, field_name: str, username: str) -> dict:
     """
     Add a field to a notetype for a user.
-    
+
     Args:
         notetype_id (int): The notetype's ID.
         field_name (str): The name of the new field.
@@ -404,7 +404,7 @@ def add_field_to_notetype(notetype_id: int, field_name: str, username: str) -> d
 def remove_field_from_notetype(notetype_id: int, field_name: str, username: str) -> dict:
     """
     Remove a field from a notetype for a user.
-    
+
     Args:
         notetype_id (int): The notetype's ID.
         field_name (str): The name of the field to remove.
@@ -419,10 +419,38 @@ def remove_field_from_notetype(notetype_id: int, field_name: str, username: str)
     return note_ops.remove_field_from_notetype(notetype_id, field_name, username)
 
 @mcp.tool()
+def update_note_contents(note_id: int, fields: dict, username: str, tags: list = None) -> dict:
+    """
+    Update the contents of a note by modifying its fields.
+    
+    Args:
+        note_id (int): The ID of the note to update
+        fields (dict): Dictionary mapping field names to their new values
+        username (str): The user who owns the note
+        
+    Returns:
+        dict: Response from the note update operation
+        
+    Example:
+        update_note_contents(
+            note_id=12345,
+            fields={"Front": "Updated question", "Back": "Updated answer"},
+            username="user1",
+            tags=["tag1", "tag2"]
+        )
+    """
+    return note_ops.update_note_fields(
+        note_id=note_id,
+        username=username,
+        fields=fields,
+        tags=tags
+    )
+
+@mcp.tool()
 def get_sort_field(notetype_id: int, username: str) -> dict:
     """
     Get the sort field for a notetype for a user.
-    
+
     Args:
         notetype_id (int): The notetype's ID.
         username (str): The user who owns the notetype.
@@ -435,7 +463,7 @@ def get_sort_field(notetype_id: int, username: str) -> dict:
 def set_sort_field(notetype_id: int, field_name: str, username: str) -> dict:
     """
     Set the sort field for a notetype for a user.
-    
+
     Args:
         notetype_id (int): The notetype's ID.
         field_name (str): The name of the field to use for sorting.
@@ -453,7 +481,7 @@ def set_sort_field(notetype_id: int, field_name: str, username: str) -> dict:
 def reorder_fields(notetype_id: int, new_order: dict, username: str) -> dict:
     """
     Reorder the fields for a notetype for a user.
-    
+
     Args:
         notetype_id (int): The notetype's ID.
         new_order (dict): Mapping of field names to new ordinal positions (0-based). Example: {"Front": 1, "Back": 0}
@@ -556,7 +584,7 @@ def sync_user_login(profile_name: str, upload: bool = False) -> dict:
     endpoint = os.getenv('ANKI_ENDPOINT')
     return user_ops.sync_user_login(profile_name=profile_name, username=username, password=password, endpoint=endpoint, upload=upload)
 
-#  
+#
 # DB Operations
 #
 
@@ -620,7 +648,7 @@ def flip_and_submit(deck_id: int, action: str, username: str) -> dict:
     - username (str): The user studying the deck.
     Returns: dict with session info and selected cards.
     This should be called whenever a study session request has curation or assessment instructions.
-    this takes a number for its feedback, 1, 2, 3, or 4 and automatically flips the card first, 
+    this takes a number for its feedback, 1, 2, 3, or 4 and automatically flips the card first,
     and THEN submits the feedback. It saves you from calling `study` twice.
 
     You need to be prepared to comply with either 'curation_instructions' or 'assessment_intructions'
@@ -742,16 +770,16 @@ def anki_help() -> str:
     # Anki Operations API
 
     This server exposes Anki operations through the Model Context Protocol.
-    
+
     ## Available Operation Categories:
-    
+
     1. Card Operations - Create, modify, and manage individual cards
     2. Deck Operations - Create and manage decks
     3. Note Operations - Work with note templates and content
     4. User Operations - Manage Anki users
     5. Study Operations - Study cards and track progress
     6. Import/Export - Import from and export to Anki packages and CSV files
-    
+
     Use the tools to execute operations on the Anki system.
     """
 
@@ -760,9 +788,9 @@ def card_ops_help() -> str:
     """Provide information about available card operations"""
     return """
     # Card Operations
-    
+
     Operations for working with individual Anki cards:
-    
+
     - create_card: Create a new card
     - get_card_contents: Get card contents
     - get_card_by_id: Get a card by ID
@@ -778,9 +806,9 @@ def deck_ops_help() -> str:
     """Provide information about available deck operations"""
     return """
     # Deck Operations
-    
+
     Operations for working with Anki decks:
-    
+
     - create_deck: Create a new deck
     - get_decks: Get all decks
     - get_deck: Get a specific deck
@@ -794,13 +822,13 @@ def create_basic_card_prompt() -> str:
     """Prompt template for creating a basic Anki card"""
     return """
     Create a basic Anki card for the user. You'll need to:
-    
+
     1. Ask the user for the front (question) and back (answer) of the card
     2. Ask which deck they want to add it to
     3. Ask for any tags they want to attach to the card
-    
+
     Then use the create_card tool to create the card with the provided information.
-    
+
     Remember to validate the inputs and provide helpful feedback if any information is missing.
     """
 
@@ -809,7 +837,7 @@ def study_session_prompt() -> str:
     """Prompt template for helping users study cards"""
     return """
     Help the user study their Anki cards by:
-    
+
     1. Asking which deck they want to study
     2. Asking how many cards they want to study
     3. Using the start_study_session tool to begin a study session
@@ -818,7 +846,7 @@ def study_session_prompt() -> str:
        - When the user is ready, show the answer
        - Ask the user to rate their answer (Again, Hard, Good, Easy)
        - Use the answer_card tool to record their answer
-    
+
     Provide encouragement and track their progress through the session.
     """
 
@@ -836,4 +864,4 @@ if __name__ == "__main__":
         traceback.print_exc(file=sys.stderr)
     finally:
         # This will run whether mcp.run exits normally or crashes
-        print("MCP server process finished.", file=sys.stderr) # Print to stderr 
+        print("MCP server process finished.", file=sys.stderr) # Print to stderr
