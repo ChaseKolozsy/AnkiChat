@@ -74,6 +74,17 @@ def get_card_by_id(note_id: int, username: str) -> dict:
     return card_ops.get_card_by_id(note_id=note_id, username=username)
 
 @mcp.tool()
+def get_cards_by_note_id(note_id: int, username: str, inclusions: list = None) -> dict:
+    """
+    Retrieve a card using its associated note ID.
+    - note_id (int): The note's unique ID.
+    - username (str): The user who owns the card.
+    - inclusions (list, optional): List of field names to include in the fields dict.
+    Returns: dict with card info for the given note.
+    """
+    return card_ops.get_cards_by_note_id(note_id=note_id, username=username, inclusions=inclusions)
+
+@mcp.tool()
 def get_cards_by_tag(tag: str, username: str, inclusions: list = None) -> dict:
     """
     Get all cards for a user that have a specific tag.
