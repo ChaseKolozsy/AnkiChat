@@ -28,13 +28,18 @@ def create_card(username: str, note_type: str, deck_id: int, fields: dict, tags:
     Returns: dict with card and note IDs, or error info.
     Use this to add new study material for a user.
     """
-    return card_ops.create_card(
+    result = card_ops.create_card(
         username=username,
         note_type=note_type,
         deck_id=deck_id,
         fields=fields,
         tags=tags
     )
+    card_contents = get_card_contents(result["card_ids"][0], username)
+    return {
+        "result": result,
+        "card_contents": card_contents
+    }
 
 @mcp.tool()
 def get_card_contents(card_id: int, username: str) -> dict:
