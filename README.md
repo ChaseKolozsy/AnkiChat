@@ -123,3 +123,20 @@ If you want to use  anki_mcp_server.py with Claude Desktop or Cursor even, or an
 - Card quality assessment
 - Integration with chatmcp desktop app for enhanced AI chat functionality
 - AnkiAPI utilizes the core Anki engine under the hood for reliable flashcard management
+
+**Container Setup (No Proxy + Desktop Profile Mount)**
+- Stop existing container: `docker rm -f anki-api`
+- Run with restart policy, proxy vars cleared, and Desktop profile mounted:
+  - `docker run -d --name anki-api --restart unless-stopped -p 5001:5001 -e HTTP_PROXY= -e HTTPS_PROXY= -e ALL_PROXY= -e NO_PROXY=sync.ankiweb.net,localhost,127.0.0.1 -v $HOME/.local/share/Anki2:/home/anki/.local/share/Anki2 anki-api`
+- Optional debug port: add `-p 5678:5678` if the port is free.
+- After launch, configure `.env` in `AnkiClient` with `ANKI_USERNAME` and `ANKI_PASSWORD`; leave `ANKI_ENDPOINT` blank (or set to `https://sync.ankiweb.net/`).
+- Why: clearing proxy vars avoids header-stripping; mounting your Desktop profile bypasses destructive full sync and uses your existing collection.
+
+MacOS and Windows examples
+- macOS (note the space in the path; keep the quotes):
+  - `docker run -d --name anki-api --restart unless-stopped -p 5001:5001 -e HTTP_PROXY= -e HTTPS_PROXY= -e ALL_PROXY= -e NO_PROXY=sync.ankiweb.net,localhost,127.0.0.1 -v "$HOME/Library/Application Support/Anki2":/home/anki/.local/share/Anki2 anki-api`
+- Windows (PowerShell):
+  - `docker run -d --name anki-api --restart unless-stopped -p 5001:5001 -e HTTP_PROXY= -e HTTPS_PROXY= -e ALL_PROXY= -e NO_PROXY=sync.ankiweb.net,localhost,127.0.0.1 -v "$env:APPDATA\Anki2:/home/anki/.local/share/Anki2" anki-api`
+- Windows (cmd.exe):
+  - `docker run -d --name anki-api --restart unless-stopped -p 5001:5001 -e HTTP_PROXY= -e HTTPS_PROXY= -e ALL_PROXY= -e NO_PROXY=sync.ankiweb.net,localhost,127.0.0.1 -v "%APPDATA%\Anki2:/home/anki/.local/share/Anki2" anki-api`
+- Docker Desktop may require enabling file sharing for the mounted folder/drive in Settings.
