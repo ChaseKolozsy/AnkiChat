@@ -1,0 +1,19 @@
+{
+    "mcpServers": {
+      "Anki Operations": {
+        "command": "/home/chase/anaconda3/bin/uv",
+        "args": [
+          "run",
+          "--with",
+          "mcp[cli]",
+          "mcp",
+          "run",
+          "/home/chase/AnkiChat/src/servers/anki_mcp_server.py"
+        ],
+        "env": {
+          "VIRTUAL_ENV": "/home/chase/AnkiChat/.venv",
+          "PATH": "/home/chase/AnkiChat/.venv/bin:${PATH}"
+        }
+      }
+    }
+}
