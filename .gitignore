@@ -67,3 +67,10 @@ docker-compose.override.yml
 last_commit.txt
 
 configs/mcp_config.json
+
+# Claude Code
+.claude/
+claude.md
+
+# Study configurations
+StudyTypes/
