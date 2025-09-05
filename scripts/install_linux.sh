@@ -34,13 +34,6 @@ if ! command -v pyenv &>/dev/null; then
   source ~/.bashrc
 fi
 
-# Run the build script
-echo "Building Docker image..."
-cd AnkiAPI/docker && ./build.sh 
-
-uv venv
-source .venv/bin/activate
-
 # Install project dependencies
 uv pip install .
 
