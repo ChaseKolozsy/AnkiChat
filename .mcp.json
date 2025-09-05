@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "anki-api": {
-      "command": "/home/chase/anaconda3/bin/uv",
+      "command": "/home/chase/anaconda/bin/uv",
       "args": [
         "run",
         "--with",
