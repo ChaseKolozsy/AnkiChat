@@ -20,7 +20,7 @@ fi
 echo "Checking for uv..."
 if ! command -v uv &>/dev/null; then
   echo "uv not found. Installing..."
-  pip install uv
+  curl -LsSf https://astral.sh/uv/install.sh | sh
 else
   echo "uv already installed."
 fi
@@ -33,6 +33,7 @@ if ! command -v pyenv &>/dev/null; then
   echo 'eval "$(pyenv init -)"' >> ~/.bashrc
   source ~/.bashrc
 fi
+
 
 # Install project dependencies
 uv pip install .

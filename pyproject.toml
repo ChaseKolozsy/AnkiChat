@@ -54,5 +54,5 @@ dependencies = [
 ]
 
 [tool.setuptools]
-packages = ["AnkiAPI", "AnkiClient"]
+packages = ["AnkiApi", "AnkiClient"]
 
