@@ -35,7 +35,26 @@ if ! command -v pyenv &>/dev/null; then
 fi
 
 
-# Install project dependencies
+# Build Docker image and run container
+OS_SELECT="linux"
+BUILD_ARGS=""
+while getopts ":s:m:p:i:c:h" opt; do
+  case ${opt} in
+    s) OS_SELECT=${OPTARG} ;;
+    m) BUILD_ARGS+=" -m \"${OPTARG}\"" ;;
+    p) BUILD_ARGS+=" -p ${OPTARG}" ;;
+    i) BUILD_ARGS+=" -i ${OPTARG}" ;;
+    c) BUILD_ARGS+=" -c ${OPTARG}" ;;
+    h) echo "Usage: $0 [-s linux|mac|windows] [-m host_anki2_dir] [-p host_port] [-i image] [-c container]"; exit 0 ;;
+    :) echo "Option -${OPTARG} requires an argument" >&2; exit 1 ;;
+    \?) echo "Invalid option: -${OPTARG}" >&2; exit 1 ;;
+  esac
+done
+
+echo "Building Docker image with OS selection: ${OS_SELECT}"
+cd AnkiAPI/docker && eval ./build.sh -s "${OS_SELECT}" ${BUILD_ARGS}
+
+# Install project dependencies for the Python package on host (optional)
 uv pip install .
 
 which python

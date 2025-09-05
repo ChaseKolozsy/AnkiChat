@@ -39,17 +39,29 @@ if ! command -v pyenv &>/dev/null; then
   source ~/.zshrc
 fi
 
-# Run the build script
-echo "Building Docker image..."
-cd AnkiAPI/docker && ./build.sh 
+# Run the build script with OS selection support
+OS_SELECT="mac"
+BUILD_ARGS=""
+while getopts ":s:m:p:i:c:h" opt; do
+  case ${opt} in
+    s) OS_SELECT=${OPTARG} ;;
+    m) BUILD_ARGS+=" -m \"${OPTARG}\"" ;;
+    p) BUILD_ARGS+=" -p ${OPTARG}" ;;
+    i) BUILD_ARGS+=" -i ${OPTARG}" ;;
+    c) BUILD_ARGS+=" -c ${OPTARG}" ;;
+    h) echo "Usage: $0 [-s linux|mac|windows] [-m host_anki2_dir] [-p host_port] [-i image] [-c container]"; exit 0 ;;
+    :) echo "Option -${OPTARG} requires an argument" >&2; exit 1 ;;
+    \?) echo "Invalid option: -${OPTARG}" >&2; exit 1 ;;
+  esac
+done
 
+echo "Building Docker image with OS selection: ${OS_SELECT}"
+cd AnkiAPI/docker && eval ./build.sh -s "${OS_SELECT}" ${BUILD_ARGS}
 
+# Optional: create venv and install Python package on host
 uv venv
 source .venv/bin/activate
-
-# Install project dependencies
 uv pip install .
 
 which python
 which uv
-
