@@ -1,18 +1,18 @@
 {
   "mcpServers": {
     "anki-api": {
-      "command": "/home/denes/develop/projects/A3/AnkiChat/uv",
+      "command": "/home/chase/AnkiChat/uv",
       "args": [
         "run",
         "--with",
         "mcp[cli]",
         "mcp",
         "run",
-        "/home/denes/develop/projects/A3/AnkiChat/src/servers/anki_mcp_server.py"
+        "/home/chase/AnkiChat/src/servers/anki_mcp_server.py"
       ],
       "env": {
-        "VIRTUAL_ENV": "/home/denes/develop/projects/A3/AnkiChat/.venv",
-        "PATH": "/home/denes/develop/projects/A3/AnkiChat/.venv/bin:${PATH}"
+        "VIRTUAL_ENV": "/home/chase/AnkiChat/.venv",
+        "PATH": "/home/chase/AnkiChat/.venv/bin:${PATH}"
       }
     }
   }
