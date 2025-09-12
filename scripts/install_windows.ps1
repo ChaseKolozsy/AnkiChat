@@ -23,6 +23,40 @@ if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
     Fail "Git is not installed or not in PATH. Please install Git for Windows."
 }
 
+# Install Node.js 18+ and npm if not present or version is too old
+Info "Checking Node.js version..."
+$nodeInstalled = Get-Command node -ErrorAction SilentlyContinue
+if ($nodeInstalled) {
+    $nodeVersion = (node --version) -replace 'v(\d+)\..*', '$1'
+    if ([int]$nodeVersion -lt 18) {
+        Info "Node.js version is less than 18. Installing Node.js 20..."
+        # Download and install Node.js 20
+        $nodeUrl = "https://nodejs.org/dist/v20.11.0/node-v20.11.0-x64.msi"
+        $nodeInstaller = "$env:TEMP\node-installer.msi"
+        Invoke-WebRequest -Uri $nodeUrl -OutFile $nodeInstaller
+        Start-Process msiexec.exe -ArgumentList "/i", $nodeInstaller, "/quiet" -Wait
+        Remove-Item $nodeInstaller
+        # Refresh PATH
+        $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+    } else {
+        Info "Node.js version $nodeVersion is already installed."
+    }
+} else {
+    Info "Node.js not found. Installing Node.js 20..."
+    # Download and install Node.js 20
+    $nodeUrl = "https://nodejs.org/dist/v20.11.0/node-v20.11.0-x64.msi"
+    $nodeInstaller = "$env:TEMP\node-installer.msi"
+    Invoke-WebRequest -Uri $nodeUrl -OutFile $nodeInstaller
+    Start-Process msiexec.exe -ArgumentList "/i", $nodeInstaller, "/quiet" -Wait
+    Remove-Item $nodeInstaller
+    # Refresh PATH
+    $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+}
+
+# Install Claude Code globally via npm
+Info "Installing Claude Code..."
+& npm install -g @anthropic-ai/claude-code
+
 # Ensure repo structure present
 $repoRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $ankiApiDir = Join-Path $repoRoot 'AnkiApi'
@@ -100,12 +134,34 @@ if (-not $SkipPythonInstall) {
         Info "AnkiChat installed successfully as global uv tool"
         
         # Verify installation
-        Info "Verifying installation..."
+        Info "Verifying AnkiChat installation..."
         & uv tool list | Select-String "anki-chat"
     } catch { 
         Warn "uv tool install failed: $_" 
     }
     Pop-Location
+    
+    # Configure Claude Code with AnkiChat MCP server
+    Info "Configuring Claude Code with AnkiChat MCP server..."
+    $mcpConfigPath = Join-Path $repoRoot "mcp_config_global.json"
+    
+    if (Test-Path $mcpConfigPath) {
+        Info "Adding AnkiChat MCP server to Claude Code..."
+        # Add the MCP server at project level using the latest method
+        # On Windows, we need to use cmd /c for npx-based commands
+        Push-Location $repoRoot
+        try {
+            & claude mcp add anki-chat --scope project -- anki-chat-mcp
+            Info "MCP server configured successfully."
+        } catch {
+            Warn "Failed to configure MCP server: $_"
+        }
+        Pop-Location
+    } else {
+        Warn "mcp_config_global.json not found at $mcpConfigPath"
+    }
 }
 
-Info "Done. API should be reachable at http://localhost:$HostPort/api"
+Info "Installation complete!"
+Info "API should be reachable at http://localhost:$HostPort/api"
+Info "You can now use 'claude' command to access Claude Code with AnkiChat MCP integration."

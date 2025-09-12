@@ -34,6 +34,26 @@ if ! command -v pyenv &>/dev/null; then
   source ~/.bashrc
 fi
 
+# Install Node.js 18+ and npm if not present or if version is too old
+echo "Checking Node.js version..."
+if command -v node &>/dev/null; then
+  NODE_VERSION=$(node --version | cut -d'v' -f2 | cut -d'.' -f1)
+  if [ "$NODE_VERSION" -lt 18 ]; then
+    echo "Node.js version is less than 18. Installing Node.js 20..."
+    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+    sudo apt-get install -y nodejs
+  else
+    echo "Node.js version $NODE_VERSION is already installed."
+  fi
+else
+  echo "Node.js not found. Installing Node.js 20..."
+  curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+  sudo apt-get install -y nodejs
+fi
+
+# Install Claude Code globally via npm
+echo "Installing Claude Code..."
+npm install -g @anthropic-ai/claude-code
 
 # Build Docker image and run container
 OS_SELECT="linux"
@@ -63,6 +83,25 @@ echo "Installing AnkiChat globally as a uv tool..."
 uv tool install . --force
 
 # Verify installation
-echo "Verifying installation..."
+echo "Verifying AnkiChat installation..."
 which anki-chat-mcp
 uv tool list | grep anki-chat
+
+# Configure Claude Code with AnkiChat MCP server
+echo "Configuring Claude Code with AnkiChat MCP server..."
+# Get the absolute path of the project directory
+PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+MCP_CONFIG_PATH="$PROJECT_DIR/mcp_config_global.json"
+
+if [ -f "$MCP_CONFIG_PATH" ]; then
+  echo "Adding AnkiChat MCP server to Claude Code..."
+  # Add the MCP server at project level using the latest method
+  cd "$PROJECT_DIR"
+  claude mcp add anki-chat --scope project -- anki-chat-mcp
+  echo "MCP server configured successfully."
+else
+  echo "Warning: mcp_config_global.json not found at $MCP_CONFIG_PATH"
+fi
+
+echo "Installation complete!"
+echo "You can now use 'claude' command to access Claude Code with AnkiChat MCP integration."
