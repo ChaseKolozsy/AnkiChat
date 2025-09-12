@@ -54,8 +54,15 @@ done
 echo "Building Docker image with OS selection: ${OS_SELECT}"
 cd AnkiAPI/docker && eval ./build.sh -s "${OS_SELECT}" ${BUILD_ARGS}
 
-# Install project dependencies for the Python package on host (optional)
-uv pip install .
+# Clear uv cache before installation
+echo "Clearing uv cache..."
+uv cache clean
 
-which python
-which uv
+# Install AnkiChat globally as a uv tool
+echo "Installing AnkiChat globally as a uv tool..."
+uv tool install . --force
+
+# Verify installation
+echo "Verifying installation..."
+which anki-chat-mcp
+uv tool list | grep anki-chat

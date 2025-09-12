@@ -82,14 +82,30 @@ Info "Starting container $ContainerName on port $HostPort -> 5001"
     $ImageName
 
 if (-not $SkipPythonInstall) {
-    # Optional: install the Python package locally using uv if available
-    if (Get-Command uv -ErrorAction SilentlyContinue) {
-        Push-Location $repoRoot
-        try { & uv pip install . } catch { Warn "uv pip install failed: $_" }
-        Pop-Location
-    } else {
-        Warn "uv not found; skipping local Python package install."
+    # Install uv if not present
+    if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
+        Info "Installing uv..."
+        Invoke-RestMethod -Uri https://astral.sh/uv/install.ps1 | Invoke-Expression
     }
+    
+    # Clear uv cache before installation
+    Info "Clearing uv cache..."
+    & uv cache clean
+    
+    # Install AnkiChat globally as a uv tool
+    Info "Installing AnkiChat globally as a uv tool..."
+    Push-Location $repoRoot
+    try { 
+        & uv tool install . --force 
+        Info "AnkiChat installed successfully as global uv tool"
+        
+        # Verify installation
+        Info "Verifying installation..."
+        & uv tool list | Select-String "anki-chat"
+    } catch { 
+        Warn "uv tool install failed: $_" 
+    }
+    Pop-Location
 }
 
 Info "Done. API should be reachable at http://localhost:$HostPort/api"
