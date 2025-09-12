@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "anki-api": {
+    "Anki Operations": {
       "command": "anki-chat-mcp",
       "args": []
     }
