@@ -210,6 +210,24 @@ async def home(request: Request):
         .btn-easy { background: #17a2b8; }
         .btn-easy:hover { background: #138496; }
 
+        .flip-button-container {
+            text-align: center;
+            margin: 15px 0;
+        }
+        .btn-flip {
+            background: #6f42c1;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+        .btn-flip:hover {
+            background: #5a32a3;
+        }
+
         /* Queue Status */
         .queue-status {
             background: #262626;
@@ -299,6 +317,10 @@ async def home(request: Request):
                             <span class="spinner hidden" id="claude-spinner"></span>
                             Ask Claude for Definitions
                         </button>
+                    </div>
+
+                    <div class="flip-button-container">
+                        <button class="btn btn-flip" onclick="flipCard()" id="flip-button">🔄 Flip Card</button>
                     </div>
 
                     <div class="answer-buttons" id="grammar-answers">
@@ -560,6 +582,56 @@ async def home(request: Request):
             }
 
             display.innerHTML = html || '<p>No field data available</p>';
+
+            // Reset flip button when new card is displayed
+            const flipButton = document.getElementById('flip-button');
+            if (flipButton) {
+                flipButton.textContent = '🔄 Flip Card';
+                flipButton.disabled = false;
+            }
+        }
+
+        async function flipCard() {
+            const flipButton = document.getElementById('flip-button');
+
+            if (!grammarSession.active || !grammarSession.currentCard) {
+                alert('No active card to flip');
+                return;
+            }
+
+            try {
+                // Disable flip button during request
+                flipButton.disabled = true;
+                flipButton.textContent = '🔄 Flipping...';
+
+                // Call flip action on the current grammar session
+                const response = await fetch('/api/flip-card', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username: currentUser
+                    })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    // Update the card display with the flipped card
+                    grammarSession.currentCard = result.current_card;
+                    displayGrammarCard(result.current_card);
+
+                    // Update flip button text
+                    flipButton.textContent = '✅ Flipped';
+                } else {
+                    alert('Error flipping card: ' + (result.error || 'Unknown error'));
+                    flipButton.textContent = '🔄 Flip Card';
+                }
+            } catch (error) {
+                alert('Error flipping card: ' + error.message);
+                flipButton.textContent = '🔄 Flip Card';
+            } finally {
+                // Re-enable flip button
+                flipButton.disabled = false;
+            }
         }
 
         function displayVocabularyCard(card) {
@@ -966,6 +1038,45 @@ async def start_dual_session(request: Request):
         result = await claude_integration.start_grammar_session(deck_id)
 
         return JSONResponse(result)
+
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)})
+
+@app.post("/api/flip-card")
+async def flip_card(request: Request):
+    """Flip the current grammar card to show the back"""
+    global claude_integration, current_user
+
+    try:
+        data = await request.json()
+        username = data.get("username", current_user or "chase")
+
+        if not claude_integration or not claude_integration.grammar_session:
+            return JSONResponse({"success": False, "error": "No active grammar session"})
+
+        # Use the study operations to flip the card
+        from AnkiClient.src.operations import study_ops
+
+        result, status_code = study_ops.study(
+            deck_id=claude_integration.grammar_session.deck_id,
+            action="flip",
+            username=username
+        )
+
+        if status_code == 200:
+            # Update the current card in the session
+            claude_integration.grammar_session.current_card = result
+
+            return JSONResponse({
+                "success": True,
+                "current_card": result,
+                "message": "Card flipped successfully"
+            })
+        else:
+            return JSONResponse({
+                "success": False,
+                "error": f"Failed to flip card: {result.get('error', 'Unknown error')}"
+            })
 
     except Exception as e:
         return JSONResponse({"success": False, "error": str(e)})
