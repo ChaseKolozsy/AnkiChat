@@ -689,6 +689,8 @@ async def study_interface(request: Request, user: str, deck_id: int, deck_name: 
                     await makeStudyRequest('/api/session/cache-answer', {{ username, rating: ease, card_id: currentCardId }});
                     const late = document.getElementById('late-answer');
                     if (late) late.classList.add('hidden');
+                    // Immediately resume the grammar study session and auto-submit cached answer(s)
+                    await startSession();
                 }} catch (e) {{ alert('Error caching answer: ' + e.message); }}
             }}
 
