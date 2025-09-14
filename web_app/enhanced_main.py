@@ -323,7 +323,7 @@ async def home(request: Request):
                         <button class="btn btn-flip" onclick="flipCard()" id="flip-button">🔄 Flip Card</button>
                     </div>
 
-                    <div class="answer-buttons" id="grammar-answers">
+                    <div class="answer-buttons hidden" id="grammar-answers">
                         <button class="btn btn-answer btn-again" onclick="answerCard(1)">1 - Again</button>
                         <button class="btn btn-answer btn-hard" onclick="answerCard(2)">2 - Hard</button>
                         <button class="btn btn-answer btn-good" onclick="answerCard(3)">3 - Good</button>
@@ -589,6 +589,12 @@ async def home(request: Request):
                 flipButton.textContent = '🔄 Flip Card';
                 flipButton.disabled = false;
             }
+
+            // Hide answer buttons until card is flipped
+            const answerButtons = document.getElementById('grammar-answers');
+            if (answerButtons) {
+                answerButtons.classList.add('hidden');
+            }
         }
 
         async function flipCard() {
@@ -621,6 +627,12 @@ async def home(request: Request):
 
                     // Update flip button text
                     flipButton.textContent = '✅ Flipped';
+
+                    // Show answer buttons after successful flip
+                    const answerButtons = document.getElementById('grammar-answers');
+                    if (answerButtons) {
+                        answerButtons.classList.remove('hidden');
+                    }
                 } else {
                     alert('Error flipping card: ' + (result.error || 'Unknown error'));
                     flipButton.textContent = '🔄 Flip Card';
