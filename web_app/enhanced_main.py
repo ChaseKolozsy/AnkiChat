@@ -1168,9 +1168,13 @@ async def get_decks(request: Request):
             return JSONResponse({"error": "Username is required"}, status_code=400)
 
         # Use the deck operations from AnkiClient
-        result, status_code = deck_ops.get_user_decks(username=username)
+        result = deck_ops.get_decks(username=username)
 
-        return JSONResponse(result, status_code=status_code)
+        # Check if result is a tuple (result, status_code) or just result
+        if isinstance(result, tuple):
+            return JSONResponse(result[0], status_code=result[1])
+        else:
+            return JSONResponse(result)
 
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
