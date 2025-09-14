@@ -313,6 +313,16 @@ async def home(request: Request):
         /* Hidden elements */
         .hidden { display: none; }
 
+        /* Vocabulary feedback borders */
+        .vocabulary-session.feedback-success {
+            border: 3px solid #28a745 !important;
+            transition: border-color 0.3s ease;
+        }
+        .vocabulary-session.feedback-error {
+            border: 3px solid #dc3545 !important;
+            transition: border-color 0.3s ease;
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
             .sessions-container { flex-direction: column; }
@@ -979,7 +989,7 @@ async def home(request: Request):
 
                 const result = await response.json();
                 if (result.success) {
-                    alert(`Vocabulary answer ${answer} cached for auto-session`);
+                    showVocabularyFeedback(true); // Show success border
                     updateVocabularyStatus();
 
                     // Move to next vocabulary card
@@ -992,10 +1002,10 @@ async def home(request: Request):
                         document.getElementById('vocabulary-answers').classList.add('hidden');
                     }
                 } else {
-                    alert('Error caching vocabulary answer: ' + result.error);
+                    showVocabularyFeedback(false); // Show error border
                 }
             } catch (error) {
-                alert('Error caching vocabulary answer: ' + error.message);
+                showVocabularyFeedback(false); // Show error border
             }
         }
 
@@ -1072,6 +1082,23 @@ async def home(request: Request):
             document.getElementById('submit-vocabulary-session').disabled = cachedCount === 0;
         }
 
+        function showVocabularyFeedback(success) {
+            const vocabContainer = document.querySelector('.vocabulary-session');
+            if (!vocabContainer) return;
+
+            // Remove any existing feedback classes
+            vocabContainer.classList.remove('feedback-success', 'feedback-error');
+
+            // Add appropriate feedback class
+            const feedbackClass = success ? 'feedback-success' : 'feedback-error';
+            vocabContainer.classList.add(feedbackClass);
+
+            // Remove feedback after 2 seconds
+            setTimeout(() => {
+                vocabContainer.classList.remove(feedbackClass);
+            }, 2000);
+        }
+
         async function submitVocabularySession() {
             if (Object.keys(vocabularySession.cachedAnswers).length === 0) {
                 alert('No cached vocabulary answers to submit');
@@ -1087,7 +1114,7 @@ async def home(request: Request):
 
                 const result = await response.json();
                 if (result.success) {
-                    alert(`Auto-session started! Processing ${result.cards_to_process} vocabulary cards.`);
+                    alert(`Auto-session completed! Successfully processed ${result.processed_count} vocabulary cards.`);
 
                     // Clear cached answers
                     vocabularySession.cachedAnswers = {};

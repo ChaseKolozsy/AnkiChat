@@ -469,13 +469,17 @@ Használd a define-with-context parancs pontos utasításait és hozz létre min
             if not self.vocabulary_queue.card_answer_mapping:
                 return {'success': False, 'error': 'No cached answers to process'}
 
+            # Capture count before processing clears the mapping
+            cards_to_process = len(self.vocabulary_queue.card_answer_mapping)
+
             # Start auto-session for default deck
             auto_session_result = await self._start_auto_vocabulary_session()
 
             return {
                 'success': True,
                 'auto_session_started': True,
-                'cards_to_process': len(self.vocabulary_queue.card_answer_mapping),
+                'cards_to_process': cards_to_process,
+                'processed_count': auto_session_result.get('processed_count', cards_to_process),
                 'session_result': auto_session_result
             }
 
