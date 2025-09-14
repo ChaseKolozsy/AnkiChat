@@ -1,6 +1,6 @@
 [project]
 name = "anki-chat"
-version = "0.1.0"
+version = "0.2.0"
 description = "AnkiChat MCP Server for Anki operations"
 readme = "README.md"
 requires-python = ">=3.10,<3.11"
@@ -55,7 +55,7 @@ dependencies = [
 
 [project.scripts]
 anki-chat-mcp = "anki_chat.cli:main"
-anki-chat-web = "web_app.main:main"
+anki-chat-web = "web_app.enhanced_main:main"
 
 [tool.setuptools]
 packages = ["anki_chat", "src", "src.servers", "src.clients", "AnkiApi", "AnkiClient", "AnkiClient.src", "AnkiClient.src.operations", "web_app"]
