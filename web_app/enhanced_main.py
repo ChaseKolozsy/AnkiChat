@@ -420,10 +420,7 @@ async def home(request: Request):
                     </div>
 
                     <div class="answer-buttons hidden" id="vocabulary-answers">
-                        <button class="btn btn-answer btn-again" onclick="answerVocabularyCard(1)">1 - Again</button>
-                        <button class="btn btn-answer btn-hard" onclick="answerVocabularyCard(2)">2 - Hard</button>
-                        <button class="btn btn-answer btn-good" onclick="answerVocabularyCard(3)">3 - Good</button>
-                        <button class="btn btn-answer btn-easy" onclick="answerVocabularyCard(4)">4 - Easy</button>
+                        <button class="btn btn-answer btn-good" onclick="answerVocabularyCard(3)">✅ Studied</button>
                     </div>
 
                     <div id="vocabulary-queue" class="queue-status">
@@ -742,26 +739,50 @@ async def home(request: Request):
             const defineSection = document.getElementById('vocab-define-section');
             const answerSection = document.getElementById('vocabulary-answers');
 
-            if (!card || !card.fields) {
+            if (!card) {
                 display.classList.add('hidden');
                 defineSection.classList.add('hidden');
                 answerSection.classList.add('hidden');
                 return;
             }
 
-            const fields = card.fields;
             let html = '';
 
-            Object.keys(fields).forEach(fieldName => {
-                if (fields[fieldName] && fields[fieldName].trim()) {
-                    html += `
-                        <div class="card-field">
-                            <div class="field-label">${fieldName}</div>
-                            <div class="field-content">${fields[fieldName]}</div>
-                        </div>
-                    `;
+            // Handle full card contents from card_ops (entire card display)
+            if (card.fields) {
+                // Standard fields structure
+                Object.keys(card.fields).forEach(fieldName => {
+                    if (card.fields[fieldName] && card.fields[fieldName].trim()) {
+                        html += `
+                            <div class="card-field">
+                                <div class="field-label">${fieldName}</div>
+                                <div class="field-content">${card.fields[fieldName]}</div>
+                            </div>
+                        `;
+                    }
+                });
+            } else if (card && typeof card === 'object') {
+                // Direct field iteration (entire card content)
+                for (const [field, value] of Object.entries(card)) {
+                    // Skip metadata fields and empty values
+                    if (field !== 'card_id' && field !== 'id' && field !== 'note_id' &&
+                        field !== 'media_files' && field !== 'ease_options' &&
+                        value && typeof value === 'string' && value.trim() !== '') {
+
+                        // Clean up field names for display
+                        const displayField = field
+                            .replace(/_/g, ' ')
+                            .replace(/\b\w/g, l => l.toUpperCase());
+
+                        html += `
+                            <div class="card-field">
+                                <div class="field-label">${displayField}</div>
+                                <div class="field-content">${value}</div>
+                            </div>
+                        `;
+                    }
                 }
-            });
+            }
 
             display.innerHTML = html || '<p>No field data available</p>';
             display.classList.remove('hidden');
@@ -939,7 +960,7 @@ async def home(request: Request):
                 return;
             }
 
-            const cardId = vocabularySession.currentCard.card_id;
+            const cardId = vocabularySession.currentCard.id || vocabularySession.currentCard.card_id;
             vocabularySession.cachedAnswers[cardId] = answer;
 
             try {

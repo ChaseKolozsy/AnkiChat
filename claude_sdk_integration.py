@@ -435,8 +435,27 @@ Használd a define-with-context parancs pontos utasításait és hozz létre min
         }
 
     def get_next_vocabulary_card(self) -> Optional[Dict[str, Any]]:
-        """Get next vocabulary card from LIFO queue"""
-        return self.vocabulary_queue.get_next_card()
+        """Get next vocabulary card from LIFO queue with full contents"""
+        card = self.vocabulary_queue.get_next_card()
+        if not card:
+            return None
+
+        # Get full card contents using card_ops
+        try:
+            from AnkiClient.src.operations.card_ops import get_card_contents
+
+            card_id = card.get('id') or card.get('card_id')
+            if card_id:
+                full_card_data = get_card_contents(card_id=card_id, username="chase")
+                logger.info(f"Retrieved full contents for vocabulary card {card_id}")
+                return full_card_data
+            else:
+                logger.warning("No card ID found, returning original card data")
+                return card
+
+        except Exception as e:
+            logger.error(f"Error getting vocabulary card contents: {e}")
+            return card
 
     def cache_vocabulary_answer(self, card_id: int, answer: int):
         """Cache vocabulary card answer"""
