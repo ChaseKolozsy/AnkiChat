@@ -139,6 +139,20 @@ async def home(request: Request):
             line-height: 1.4;
             text-align: left;
         }
+        .card-side {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #1e1e1e;
+            border-radius: 8px;
+            border: 1px solid #333;
+        }
+        .card-side h4 {
+            margin: 0 0 15px 0;
+            color: #ff6b35;
+            font-size: 16px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 8px;
+        }
 
         /* Form Elements */
         .form-group { margin-bottom: 20px; }
@@ -494,24 +508,56 @@ async def home(request: Request):
 
         function displayGrammarCard(card) {
             const display = document.getElementById('grammar-card-display');
-            if (!card || !card.fields) {
+            if (!card) {
                 display.innerHTML = '<p>No card data available</p>';
                 return;
             }
 
-            const fields = card.fields;
             let html = '';
 
-            Object.keys(fields).forEach(fieldName => {
-                if (fields[fieldName] && fields[fieldName].trim()) {
-                    html += `
-                        <div class="card-field">
-                            <div class="field-label">${fieldName}</div>
-                            <div class="field-content">${fields[fieldName]}</div>
-                        </div>
-                    `;
+            // Handle both the current card data structure (front/back) and legacy fields structure
+            if (card.front) {
+                // Current structure: card has front and possibly back
+                html += '<div class="card-side"><h4>📝 Front</h4>';
+                Object.keys(card.front).forEach(fieldName => {
+                    if (card.front[fieldName] && card.front[fieldName].trim()) {
+                        html += `
+                            <div class="card-field">
+                                <div class="field-label">${fieldName.replace(/_/g, ' ')}</div>
+                                <div class="field-content">${card.front[fieldName]}</div>
+                            </div>
+                        `;
+                    }
+                });
+                html += '</div>';
+
+                if (card.back) {
+                    html += '<div class="card-side"><h4>🎯 Back</h4>';
+                    Object.keys(card.back).forEach(fieldName => {
+                        if (card.back[fieldName] && card.back[fieldName].trim()) {
+                            html += `
+                                <div class="card-field">
+                                    <div class="field-label">${fieldName.replace(/_/g, ' ')}</div>
+                                    <div class="field-content">${card.back[fieldName]}</div>
+                                </div>
+                            `;
+                        }
+                    });
+                    html += '</div>';
                 }
-            });
+            } else if (card.fields) {
+                // Legacy structure: card has fields
+                Object.keys(card.fields).forEach(fieldName => {
+                    if (card.fields[fieldName] && card.fields[fieldName].trim()) {
+                        html += `
+                            <div class="card-field">
+                                <div class="field-label">${fieldName}</div>
+                                <div class="field-content">${card.fields[fieldName]}</div>
+                            </div>
+                        `;
+                    }
+                });
+            }
 
             display.innerHTML = html || '<p>No field data available</p>';
         }
