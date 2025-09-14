@@ -1000,6 +1000,8 @@ async def home(request: Request):
                         document.getElementById('vocabulary-card-display').classList.add('hidden');
                         document.getElementById('vocab-define-section').classList.add('hidden');
                         document.getElementById('vocabulary-answers').classList.add('hidden');
+                        // Clear current card so polling can fetch new ones later
+                        vocabularySession.currentCard = null;
                     }
                 } else {
                     showVocabularyFeedback(false); // Show error border
@@ -1030,7 +1032,8 @@ async def home(request: Request):
                         }
 
                         // If new cards available, get and display one
-                        if (result.queue_status.queue_length > 0 && !vocabularySession.currentCard) {
+                        const vocabDisplayHidden = document.getElementById('vocabulary-card-display').classList.contains('hidden');
+                        if (result.queue_status.queue_length > 0 && (!vocabularySession.currentCard || vocabDisplayHidden)) {
                             const nextCard = await getNextVocabularyCard();
                             if (nextCard) {
                                 displayVocabularyCard(nextCard);
@@ -1118,6 +1121,8 @@ async def home(request: Request):
 
                     // Clear cached answers
                     vocabularySession.cachedAnswers = {};
+                    // Clear current card so next poll can show newly created ones
+                    vocabularySession.currentCard = null;
                     updateVocabularyStatus();
                 } else {
                     alert('Error submitting vocabulary session: ' + result.error);

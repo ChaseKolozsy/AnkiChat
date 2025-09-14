@@ -47,6 +47,7 @@ class VocabularyQueueManager:
         self.queue = deque()  # LIFO queue for new vocabulary cards
         self.card_answer_mapping: Dict[int, int] = {}  # card_id -> answer
         self.processed_cards: List[Dict[str, Any]] = []
+        self.seen_card_ids: set[int] = set()  # Track seen IDs to avoid treating existing cards as new
 
     def add_new_card(self, card_data: Dict[str, Any]):
         """Add new card to front of queue (LIFO)"""
@@ -67,6 +68,18 @@ class VocabularyQueueManager:
     def get_cached_answer(self, card_id: int) -> Optional[int]:
         """Get cached answer for card"""
         return self.card_answer_mapping.get(card_id)
+
+    @staticmethod
+    def _extract_card_id(card: Dict[str, Any]) -> Optional[int]:
+        return card.get('id') or card.get('card_id')
+
+    def record_initial_cards(self, cards: List[Dict[str, Any]]):
+        """Seed seen_card_ids with existing cards so they aren't treated as new."""
+        for c in cards:
+            cid = self._extract_card_id(c) if isinstance(c, dict) else None
+            if cid is not None:
+                self.seen_card_ids.add(int(cid))
+        logger.info(f"Seeded {len(self.seen_card_ids)} existing vocabulary cards as seen")
 
 
 class ClaudeSDKIntegration:
@@ -194,6 +207,16 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
         logger.info("Starting vocabulary card polling...")
         last_card_count = 0
 
+        # On first run, seed seen_card_ids with current deck contents so we don't treat them as new
+        try:
+            from AnkiClient.src.operations.deck_ops import get_cards_in_deck
+            existing_cards = get_cards_in_deck(deck_id=1, username="chase")
+            if isinstance(existing_cards, list):
+                self.vocabulary_queue.record_initial_cards(existing_cards)
+                last_card_count = len(existing_cards)
+        except Exception as e:
+            logger.warning(f"Initial vocabulary seeding failed: {e}")
+
         while self.polling_active:
             try:
                 # Get current cards in default deck
@@ -205,16 +228,20 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
                 )
 
                 if isinstance(deck_cards, list):
-                    current_count = len(deck_cards)
-
-                    # Check for new cards
-                    if current_count > last_card_count:
-                        new_cards = deck_cards[last_card_count:]
-                        for card in new_cards:
+                    # Identify truly new cards by unseen IDs
+                    new_count = 0
+                    for card in deck_cards:
+                        cid = self.vocabulary_queue._extract_card_id(card) if isinstance(card, dict) else None
+                        if cid is None:
+                            continue
+                        cid = int(cid)
+                        if cid not in self.vocabulary_queue.seen_card_ids:
+                            self.vocabulary_queue.seen_card_ids.add(cid)
                             self.vocabulary_queue.add_new_card(card)
+                            new_count += 1
 
-                        logger.info(f"Detected {len(new_cards)} new vocabulary cards")
-                        last_card_count = current_count
+                    if new_count > 0:
+                        logger.info(f"Detected {new_count} new vocabulary cards by ID")
 
                 # Wait before next poll (5 seconds)
                 await asyncio.sleep(5)
