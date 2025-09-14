@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Dict, Any
 
 # Add project root to path
-project_root = Path(__file__).parent
+project_root = Path(__file__).parents[2]  # Go up two levels to reach project root
 sys.path.insert(0, str(project_root))
 
 # Import the integration modules
