@@ -326,6 +326,53 @@ Használd a define-with-context parancs pontos utasításait és hozz létre min
         self.grammar_session.cached_cards.append(cached_card)
         logger.info(f"Cached answer {answer} for card {card_id}")
 
+    def _pop_cached_answer_for(self, card_id: int) -> Optional[CachedCard]:
+        """Find and remove a cached answer for the given card_id if present."""
+        if not self.grammar_session.cached_cards:
+            return None
+        for idx, cached in enumerate(self.grammar_session.cached_cards):
+            if cached.card_id == card_id:
+                return self.grammar_session.cached_cards.pop(idx)
+        return None
+
+    async def auto_answer_if_current_matches(self, current_card_result: Dict[str, Any]) -> Dict[str, Any]:
+        """If the provided current card matches a cached answer, auto-answer it and return the next card.
+
+        Returns a dict with keys:
+        - applied (bool): whether an auto-answer was applied
+        - next_card (dict|None): the next card result if applied, else None
+        """
+        try:
+            # Determine card_id from result shape
+            card_id = current_card_result.get('card_id')
+            if not card_id:
+                return {"applied": False, "next_card": None}
+
+            cached = self._pop_cached_answer_for(card_id)
+            if not cached:
+                return {"applied": False, "next_card": None}
+
+            # Apply the cached answer to the current card
+            from AnkiClient.src.operations.study_ops import study
+            result, _ = study(
+                deck_id=self.grammar_session.deck_id,
+                action=str(cached.user_answer),
+                username="chase"
+            )
+
+            # Update current card in session to the newly served card
+            if result.get('card_id'):
+                self.grammar_session.current_card = result
+
+            logger.info(
+                f"Auto-answered matching card {card_id} with answer {cached.user_answer}; advanced to next."
+            )
+            return {"applied": True, "next_card": result}
+
+        except Exception as e:
+            logger.error(f"Error during auto-answer flow: {e}")
+            return {"applied": False, "next_card": None}
+
     async def _close_active_study_session(self):
         """Close active study session to allow card creation"""
         try:

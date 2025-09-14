@@ -1240,6 +1240,16 @@ async def flip_card(request: Request):
             print(f"DEBUG - Result type: {type(result)}")
             print(f"DEBUG - Result keys: {result.keys() if isinstance(result, dict) else 'Not a dict'}")
 
+            # Preserve the card_id across flip results (flip payload lacks card_id)
+            try:
+                existing_id = None
+                if isinstance(claude_integration.grammar_session.current_card, dict):
+                    existing_id = claude_integration.grammar_session.current_card.get("card_id")
+                if isinstance(result, dict) and existing_id and not result.get("card_id"):
+                    result["card_id"] = existing_id
+            except Exception as _e:
+                logger.warning(f"Could not preserve card_id on flip: {_e}")
+
             # Update the current card in the session
             claude_integration.grammar_session.current_card = result
 
@@ -1347,36 +1357,38 @@ async def answer_grammar_card(request: Request):
             })
         elif is_cached_answer:
             # This is the submission of a previously cached answer
-            # NOW we restart the grammar session
+            # Restart grammar session and auto-answer only if the popped card matches
             try:
                 from AnkiClient.src.operations import study_ops
 
-                logger.info("Submitting cached grammar answer and restarting session")
+                logger.info("Resuming grammar session; will auto-answer only if current card matches cached")
 
-                # Restart grammar study session
-                start_result = study_ops.study(
+                # Restart grammar study session to get the current card
+                start_result, start_status = study_ops.study(
                     deck_id=claude_integration.grammar_session.deck_id,
                     action="start",
                     username=current_user or "chase"
                 )
 
-                if start_result[1] == 200:  # Success
-                    # Submit the cached answer
-                    answer_result = study_ops.study(
-                        deck_id=claude_integration.grammar_session.deck_id,
-                        action=str(answer),
-                        username=current_user or "chase"
-                    )
-
-                    # Mark grammar session as resumed
+                if start_status == 200 and start_result.get("card_id"):
+                    # Update integration session state
+                    claude_integration.grammar_session.current_card = start_result
                     claude_integration.grammar_session.is_paused = False
+
+                    # Attempt auto-answer if the current card matches a cached answer
+                    auto = await claude_integration.auto_answer_if_current_matches(start_result)
+
+                    # Determine which card to display now
+                    card_to_display = auto.get("next_card") if auto.get("applied") else start_result
 
                     return JSONResponse({
                         "success": True,
                         "session_restarted": True,
                         "grammar_session_resumed": True,
-                        "answer_result": answer_result[0],
-                        "message": "Grammar session resumed with cached answer"
+                        # Keep legacy shape expected by frontend submitCachedAnswer()
+                        "answer_result": {"current_card": card_to_display},
+                        "auto_answer_applied": auto.get("applied", False),
+                        "message": "Grammar session resumed" if not auto.get("applied") else "Grammar session resumed and cached answer auto-applied"
                     })
                 else:
                     return JSONResponse({"success": False, "error": "Failed to restart grammar session"})
@@ -1395,10 +1407,23 @@ async def answer_grammar_card(request: Request):
                     username=current_user or "chase"
                 )
 
-                return JSONResponse({
+                # Update current card in integration state
+                next_card = answer_result[0]
+                if next_card and isinstance(next_card, dict) and next_card.get("card_id"):
+                    claude_integration.grammar_session.current_card = next_card
+
+                # Attempt auto-answer if the next card matches any cached answer
+                auto = await claude_integration.auto_answer_if_current_matches(next_card)
+
+                # Normalize response so frontend can display a next_card
+                response_payload = {
                     "success": True,
-                    "answer_result": answer_result[0]
-                })
+                    "answer_result": answer_result[0],
+                    "next_card": auto.get("next_card") if auto.get("applied") else next_card,
+                    "auto_answer_applied": auto.get("applied", False)
+                }
+
+                return JSONResponse(response_payload)
 
             except Exception as e:
                 logger.error(f"Error submitting regular grammar answer: {e}")
