@@ -670,12 +670,12 @@ async def study_interface(request: Request, user: str, deck_id: int, deck_name: 
                             const definition = (item.fields && (item.fields.Definition || item.fields.definition || '')) || '';
                             const example = (item.fields && (item.fields['Example Sentence'] || item.fields.example || '')) || '';
                             div.innerHTML = `
-                                <div><strong>${word}</strong></div>
-                                <div>${definition}</div>
-                                <div class="subtle">${example}</div>
+                                <div><strong>${{word}}</strong></div>
+                                <div>${{definition}}</div>
+                                <div class="subtle">${{example}}</div>
                                 <div class="vocab-actions">
-                                    <button class="btn" onclick="markUnderstood(${item.card_id})">Understood/Studied</button>
-                                    <button class="btn secondary" onclick="requestMore(${item.card_id})">Request additional definitions</button>
+                                    <button class="btn" onclick="markUnderstood(${{item.card_id}})">Understood/Studied</button>
+                                    <button class="btn secondary" onclick="requestMore(${{item.card_id}})">Request additional definitions</button>
                                 </div>
                             `;
                             list.prepend(div);
