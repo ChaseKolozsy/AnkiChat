@@ -151,11 +151,11 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
         """Start main grammar study session"""
         try:
             # Start study session using AnkiClient
-            from AnkiClient.src.operations.study_ops import start_study_session
+            from AnkiClient.src.operations.study_ops import study
 
-            session_result = await start_study_session(
-                self.anki_client,
+            session_result, _ = study(
                 deck_id=deck_id,
+                action="start",
                 username="chase"
             )
 
@@ -331,11 +331,11 @@ Használd a define-with-context parancs pontos utasításait és hozz létre min
         """Close active study session to allow card creation"""
         try:
             if self.grammar_session.session_id:
-                from AnkiClient.src.operations.study_ops import close_study_session
+                from AnkiClient.src.operations.study_ops import study
 
-                await close_study_session(
-                    self.anki_client,
-                    session_id=self.grammar_session.session_id,
+                study(
+                    deck_id=self.grammar_session.deck_id,
+                    action="close",
                     username="chase"
                 )
 
@@ -347,11 +347,11 @@ Használd a define-with-context parancs pontos utasításait és hozz létre min
     async def _restart_study_session(self) -> Dict[str, Any]:
         """Restart study session after card creation"""
         try:
-            from AnkiClient.src.operations.study_ops import start_study_session
+            from AnkiClient.src.operations.study_ops import study
 
-            result = await start_study_session(
-                self.anki_client,
+            result, _ = study(
                 deck_id=self.grammar_session.deck_id,
+                action="start",
                 username="chase"
             )
 
@@ -392,13 +392,11 @@ Használd a define-with-context parancs pontos utasításait és hozz létre min
     async def _auto_answer_card(self, cached_card: CachedCard):
         """Automatically answer a previously cached card"""
         try:
-            from AnkiClient.src.operations.study_ops import submit_card_answer
+            from AnkiClient.src.operations.study_ops import study
 
-            result = await submit_card_answer(
-                self.anki_client,
-                session_id=self.grammar_session.session_id,
-                card_id=cached_card.card_id,
-                answer=cached_card.user_answer,
+            result, _ = study(
+                deck_id=self.grammar_session.deck_id,
+                action=str(cached_card.user_answer),
                 username="chase"
             )
 
@@ -411,11 +409,11 @@ Használd a define-with-context parancs pontos utasításait és hozz létre min
     async def _get_next_grammar_card(self) -> Dict[str, Any]:
         """Get next card in grammar session"""
         try:
-            from AnkiClient.src.operations.study_ops import get_next_card
+            from AnkiClient.src.operations.study_ops import study
 
-            result = await get_next_card(
-                self.anki_client,
-                session_id=self.grammar_session.session_id,
+            result, _ = study(
+                deck_id=self.grammar_session.deck_id,
+                action="flip",
                 username="chase"
             )
 
@@ -467,12 +465,12 @@ Használd a define-with-context parancs pontos utasításait és hozz létre min
     async def _start_auto_vocabulary_session(self) -> Dict[str, Any]:
         """Start automatic vocabulary session with cached answers"""
         try:
-            from AnkiClient.src.operations.study_ops import start_study_session, submit_card_answer
+            from AnkiClient.src.operations.study_ops import study
 
             # Start session for default deck (ID: 1)
-            session_result = await start_study_session(
-                self.anki_client,
+            session_result, _ = study(
                 deck_id=1,
+                action="start",
                 username="chase"
             )
 
@@ -485,11 +483,9 @@ Használd a define-with-context parancs pontos utasításait és hozz létre min
             # Process each cached answer
             for card_id, answer in self.vocabulary_queue.card_answer_mapping.items():
                 try:
-                    result = await submit_card_answer(
-                        self.anki_client,
-                        session_id=session_id,
-                        card_id=card_id,
-                        answer=answer,
+                    result, _ = study(
+                        deck_id=1,
+                        action=str(answer),
                         username="chase"
                     )
 
