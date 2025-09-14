@@ -91,7 +91,17 @@ class ClaudeSDKIntegration:
         self.vocabulary_queue = VocabularyQueueManager()
         self.polling_active = False
         self.claude_sdk_available = False
+        # Deck where new vocabulary cards are created (must match creation template)
+        self.vocab_deck_id: int = 1756509006667
         self._check_sdk_availability()
+
+    def set_vocabulary_deck(self, deck_id: int):
+        """Optionally override the vocabulary deck ID to monitor."""
+        try:
+            self.vocab_deck_id = int(deck_id)
+            logger.info(f"Vocabulary deck set to {self.vocab_deck_id}")
+        except Exception as e:
+            logger.warning(f"Invalid vocabulary deck id {deck_id}: {e}")
 
     def _check_sdk_availability(self):
         """Check if Claude Code SDK is available"""
@@ -179,7 +189,14 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
                     current_card=session_result
                 )
 
-                # Start vocabulary polling
+                # Reset vocabulary queue state before polling
+                try:
+                    self.vocabulary_queue.queue.clear()
+                    self.vocabulary_queue.card_answer_mapping.clear()
+                except Exception:
+                    pass
+
+                # Start vocabulary polling against configured vocab deck
                 await self._start_vocabulary_polling()
 
                 return {
@@ -210,7 +227,7 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
         # On first run, seed seen_card_ids with current deck contents so we don't treat them as new
         try:
             from AnkiClient.src.operations.deck_ops import get_cards_in_deck
-            existing_cards = get_cards_in_deck(deck_id=1, username="chase")
+            existing_cards = get_cards_in_deck(deck_id=self.vocab_deck_id, username="chase")
             if isinstance(existing_cards, list):
                 self.vocabulary_queue.record_initial_cards(existing_cards)
                 last_card_count = len(existing_cards)
@@ -223,7 +240,7 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
                 from AnkiClient.src.operations.deck_ops import get_cards_in_deck
 
                 deck_cards = get_cards_in_deck(
-                    deck_id=1,  # Default deck
+                    deck_id=self.vocab_deck_id,
                     username="chase"
                 )
 
@@ -568,7 +585,7 @@ Használd a define-with-context parancs pontos utasításait és hozz létre min
 
             # Start session for default deck (ID: 1)
             session_result, status_code = study(
-                deck_id=1,
+                deck_id=self.vocab_deck_id,
                 action="start",
                 username="chase"
             )
@@ -583,7 +600,7 @@ Használd a define-with-context parancs pontos utasításait és hozz létre min
             for card_id, answer in self.vocabulary_queue.card_answer_mapping.items():
                 try:
                     result, _ = study(
-                        deck_id=1,
+                        deck_id=self.vocab_deck_id,
                         action=str(answer),
                         username="chase"
                     )
