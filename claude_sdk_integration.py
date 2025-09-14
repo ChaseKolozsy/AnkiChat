@@ -153,17 +153,17 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
             # Start study session using AnkiClient
             from AnkiClient.src.operations.study_ops import study
 
-            session_result, _ = study(
+            session_result, status_code = study(
                 deck_id=deck_id,
                 action="start",
                 username="chase"
             )
 
-            if session_result.get('success'):
+            if status_code == 200 and session_result.get('card_id'):
                 self.grammar_session = StudySessionState(
-                    session_id=session_result.get('session_id', ''),
+                    session_id=f"session_{deck_id}_{int(time.time())}",
                     deck_id=deck_id,
-                    current_card=session_result.get('current_card')
+                    current_card=session_result
                 )
 
                 # Start vocabulary polling
@@ -197,20 +197,19 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
         while self.polling_active:
             try:
                 # Get current cards in default deck
-                from AnkiClient.src.operations.deck_ops import get_deck_cards
+                from AnkiClient.src.operations.deck_ops import get_cards_in_deck
 
-                deck_cards = await get_deck_cards(
-                    self.anki_client,
+                deck_cards = get_cards_in_deck(
                     deck_id=1,  # Default deck
                     username="chase"
                 )
 
-                if deck_cards.get('success'):
-                    current_count = len(deck_cards.get('cards', []))
+                if isinstance(deck_cards, list):
+                    current_count = len(deck_cards)
 
                     # Check for new cards
                     if current_count > last_card_count:
-                        new_cards = deck_cards['cards'][last_card_count:]
+                        new_cards = deck_cards[last_card_count:]
                         for card in new_cards:
                             self.vocabulary_queue.add_new_card(card)
 
@@ -349,14 +348,15 @@ Használd a define-with-context parancs pontos utasításait és hozz létre min
         try:
             from AnkiClient.src.operations.study_ops import study
 
-            result, _ = study(
+            result, status_code = study(
                 deck_id=self.grammar_session.deck_id,
                 action="start",
                 username="chase"
             )
 
-            if result.get('success'):
-                self.grammar_session.session_id = result.get('session_id', '')
+            if status_code == 200 and result.get('card_id'):
+                self.grammar_session.session_id = f"session_{self.grammar_session.deck_id}_{int(time.time())}"
+                self.grammar_session.current_card = result
                 logger.info(f"Restarted study session {self.grammar_session.session_id}")
 
             return result
@@ -370,7 +370,7 @@ Használd a define-with-context parancs pontos utasításait és hozz létre min
         try:
             # Restart the study session first
             restart_result = await self._restart_study_session()
-            if not restart_result.get('success'):
+            if not restart_result.get('card_id'):
                 return {'success': False, 'error': 'Failed to restart study session'}
 
             self.grammar_session.is_paused = False
@@ -417,8 +417,8 @@ Használd a define-with-context parancs pontos utasításait és hozz létre min
                 username="chase"
             )
 
-            if result.get('success'):
-                self.grammar_session.current_card = result.get('card')
+            if result.get('card_id'):
+                self.grammar_session.current_card = result
 
             return result
 
@@ -468,16 +468,16 @@ Használd a define-with-context parancs pontos utasításait és hozz létre min
             from AnkiClient.src.operations.study_ops import study
 
             # Start session for default deck (ID: 1)
-            session_result, _ = study(
+            session_result, status_code = study(
                 deck_id=1,
                 action="start",
                 username="chase"
             )
 
-            if not session_result.get('success'):
+            if status_code != 200 or not session_result.get('card_id'):
                 return {'success': False, 'error': 'Failed to start auto session'}
 
-            session_id = session_result.get('session_id')
+            session_id = f"vocab_session_{int(time.time())}"
             processed_count = 0
 
             # Process each cached answer
@@ -489,7 +489,7 @@ Használd a define-with-context parancs pontos utasításait és hozz létre min
                         username="chase"
                     )
 
-                    if result.get('success'):
+                    if not result.get('error'):
                         processed_count += 1
                         logger.info(f"Auto-processed vocabulary card {card_id} with answer {answer}")
 
