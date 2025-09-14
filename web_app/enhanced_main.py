@@ -9,6 +9,8 @@ import sys
 import asyncio
 import json
 import logging
+import signal
+import atexit
 from pathlib import Path
 from typing import Optional, Dict, Any
 from fastapi import FastAPI, Request, HTTPException, BackgroundTasks
@@ -37,6 +39,49 @@ current_deck_id = None
 study_session = {}
 claude_integration = None
 anki_client = None  # This would be initialized with actual client
+
+
+def cleanup_on_exit():
+    """Synchronous cleanup function for atexit and signal handlers"""
+    global claude_integration
+    if claude_integration:
+        # Use asyncio to run the async cleanup function
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # If event loop is already running, create a new task
+                loop.create_task(claude_integration.cleanup())
+            else:
+                # If no event loop is running, run it
+                loop.run_until_complete(claude_integration.cleanup())
+        except Exception as e:
+            print(f"Error during cleanup: {e}")
+            # Try direct synchronous cleanup if async fails
+            try:
+                if hasattr(claude_integration, 'grammar_session') and claude_integration.grammar_session and claude_integration.grammar_session.session_id:
+                    from AnkiClient.src.operations.study_ops import study
+                    study(
+                        deck_id=claude_integration.grammar_session.deck_id,
+                        action="close",
+                        username="chase"
+                    )
+                    print(f"Emergency close of grammar session {claude_integration.grammar_session.session_id}")
+            except Exception as cleanup_error:
+                print(f"Emergency cleanup also failed: {cleanup_error}")
+
+
+def signal_handler(signum, frame):
+    """Handle termination signals"""
+    print(f"\nReceived signal {signum}, cleaning up study sessions...")
+    cleanup_on_exit()
+    sys.exit(0)
+
+
+# Register signal handlers and cleanup
+signal.signal(signal.SIGINT, signal_handler)  # Ctrl+C
+signal.signal(signal.SIGTERM, signal_handler)  # Termination
+atexit.register(cleanup_on_exit)  # Normal exit
+
 
 @app.on_event("startup")
 async def startup():
@@ -1023,9 +1068,21 @@ async def home(request: Request):
         }
 
         // Cleanup on page unload
-        window.addEventListener('beforeunload', () => {
+        window.addEventListener('beforeunload', async (event) => {
             if (pollingInterval) {
                 clearInterval(pollingInterval);
+            }
+
+            // Close active study sessions when page is unloaded
+            try {
+                await fetch('/api/close-all-sessions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: currentUser }),
+                    keepalive: true  // Ensure request completes even after page unloads
+                });
+            } catch (error) {
+                console.error('Error closing sessions on page unload:', error);
             }
         });
     </script>

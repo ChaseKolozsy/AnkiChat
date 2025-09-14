@@ -510,8 +510,26 @@ Használd a define-with-context parancs pontos utasításait és hozz létre min
             return {'success': False, 'error': str(e)}
 
     async def cleanup(self):
-        """Clean up resources"""
+        """Clean up resources and close active study sessions"""
         self.polling_active = False
+
+        # Close active grammar study session if one exists
+        if hasattr(self, 'grammar_session') and self.grammar_session and self.grammar_session.session_id:
+            try:
+                from AnkiClient.src.operations.study_ops import study
+                study(
+                    deck_id=self.grammar_session.deck_id,
+                    action="close",
+                    username="chase"
+                )
+                logger.info(f"Closed active grammar study session {self.grammar_session.session_id}")
+            except Exception as e:
+                logger.error(f"Error closing grammar study session: {e}")
+
+        # Reset session state
+        if hasattr(self, 'grammar_session'):
+            self.grammar_session = StudySessionState("", 0)
+
         logger.info("Claude SDK Integration cleanup completed")
 
 
