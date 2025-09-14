@@ -224,22 +224,98 @@ async def study_interface(request: Request, user: str, deck_id: int, deck_name: 
             body {{ font-family: 'Segoe UI', sans-serif; background: #1a1a1a; color: #ffffff; min-height: 100vh; display: flex; flex-direction: column; }}
             .header {{ background: #2d2d2d; padding: 20px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }}
             .container {{ flex: 1; max-width: 800px; margin: 0 auto; padding: 20px; display: flex; flex-direction: column; }}
-            .card {{ background: #2d2d2d; border-radius: 12px; padding: 30px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); flex: 1; }}
-            .card-content {{ font-size: 24px; line-height: 1.6; text-align: center; min-height: 200px; display: flex; align-items: center; justify-content: center; }}
-            .controls {{ display: flex; justify-content: center; gap: 10px; margin-top: 30px; }}
-            .btn {{ background: #0084ff; color: white; border: none; padding: 15px 25px; border-radius: 8px; cursor: pointer; font-size: 16px; transition: all 0.2s; }}
-            .btn:hover {{ background: #0066cc; transform: translateY(-1px); }}
-            .btn:disabled {{ background: #404040; cursor: not-allowed; transform: none; }}
-            .btn.secondary {{ background: #404040; }}
-            .btn.secondary:hover {{ background: #505050; }}
-            .ease-buttons {{ display: none; gap: 10px; }}
-            .ease-btn {{ background: #666; padding: 10px 15px; border-radius: 6px; cursor: pointer; transition: all 0.2s; }}
-            .ease-btn:hover {{ background: #777; }}
+            .card {{ background: #2a2a2a; border-radius: 12px; padding: 30px; margin-bottom: 20px; box-shadow: 0 6px 20px rgba(0,0,0,0.4); flex: 1; border: 1px solid #404040; }}
+            .card-content {{
+                font-size: 18px;
+                line-height: 1.8;
+                text-align: left;
+                min-height: 300px;
+                padding: 25px;
+                background: #1f1f1f;
+                border-radius: 8px;
+                border: 1px solid #333;
+                color: #f0f0f0;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            }}
+            .field-item {{
+                margin-bottom: 20px;
+                padding: 15px;
+                background: #2a2a2a;
+                border-radius: 6px;
+                border-left: 4px solid #0084ff;
+            }}
+            .field-label {{
+                font-weight: 600;
+                color: #4a9eff;
+                font-size: 14px;
+                margin-bottom: 8px;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }}
+            .field-value {{
+                color: #e8e8e8;
+                font-size: 16px;
+                line-height: 1.6;
+            }}
+            .controls {{ display: flex; justify-content: center; gap: 15px; margin-top: 30px; flex-wrap: wrap; }}
+            .btn {{
+                background: #0084ff;
+                color: white;
+                border: none;
+                padding: 16px 28px;
+                border-radius: 8px;
+                cursor: pointer;
+                font-size: 16px;
+                font-weight: 500;
+                transition: all 0.2s;
+                border: 2px solid transparent;
+                min-width: 130px;
+            }}
+            .btn:hover {{ background: #0066cc; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,132,255,0.3); }}
+            .btn:disabled {{ background: #404040; cursor: not-allowed; transform: none; box-shadow: none; }}
+            .btn.secondary {{ background: #505050; border: 2px solid #666; }}
+            .btn.secondary:hover {{ background: #606060; border-color: #777; }}
+            .ease-buttons {{ display: none; gap: 12px; justify-content: center; }}
+            .ease-btn {{
+                background: #666;
+                padding: 14px 20px;
+                border-radius: 8px;
+                cursor: pointer;
+                transition: all 0.2s;
+                border: none;
+                color: white;
+                font-weight: 500;
+                font-size: 15px;
+                min-width: 90px;
+            }}
+            .ease-btn:hover {{ transform: translateY(-1px); box-shadow: 0 4px 8px rgba(0,0,0,0.3); }}
             .ease-btn.again {{ background: #dc3545; }}
+            .ease-btn.again:hover {{ background: #c82333; box-shadow: 0 4px 8px rgba(220,53,69,0.3); }}
             .ease-btn.hard {{ background: #fd7e14; }}
+            .ease-btn.hard:hover {{ background: #e96b00; box-shadow: 0 4px 8px rgba(253,126,20,0.3); }}
             .ease-btn.good {{ background: #28a745; }}
+            .ease-btn.good:hover {{ background: #218838; box-shadow: 0 4px 8px rgba(40,167,69,0.3); }}
             .ease-btn.easy {{ background: #007bff; }}
-            .stats {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; font-size: 14px; opacity: 0.7; }}
+            .ease-btn.easy:hover {{ background: #0056b3; box-shadow: 0 4px 8px rgba(0,123,255,0.3); }}
+            .stats {{
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 25px;
+                padding: 15px 20px;
+                background: #2a2a2a;
+                border-radius: 8px;
+                border: 1px solid #404040;
+                font-size: 15px;
+                font-weight: 500;
+            }}
+            .stat-item {{
+                color: #b8b8b8;
+            }}
+            .stat-value {{
+                color: #4a9eff;
+                font-weight: 600;
+            }}
             .back-link {{ position: absolute; top: 20px; left: 20px; color: #0084ff; text-decoration: none; }}
             .back-link:hover {{ text-decoration: underline; }}
         </style>
@@ -253,8 +329,8 @@ async def study_interface(request: Request, user: str, deck_id: int, deck_name: 
 
         <div class="container">
             <div class="stats">
-                <span id="session-stats">Click "Start Session" to begin</span>
-                <span id="card-counter"></span>
+                <span class="stat-item">Status: <span class="stat-value" id="session-stats">Ready to start</span></span>
+                <span class="stat-item" id="card-counter">Cards: <span class="stat-value">0</span></span>
             </div>
 
             <div class="card">
@@ -305,8 +381,8 @@ async def study_interface(request: Request, user: str, deck_id: int, deck_name: 
                     document.getElementById('start-btn').style.display = 'none';
                     document.getElementById('flip-btn').style.display = 'inline-block';
                     document.getElementById('close-btn').style.display = 'inline-block';
-                    document.getElementById('session-stats').textContent = 'Session active - Front side shown';
-                    document.getElementById('card-counter').textContent = `Card #${{cardCount}}`;
+                    document.getElementById('session-stats').textContent = 'Front side shown';
+                    document.getElementById('card-counter').innerHTML = `Cards: <span class="stat-value">${{cardCount}}</span>`;
 
                 }} catch (error) {{
                     alert('Error starting session: ' + error.message);
@@ -326,7 +402,7 @@ async def study_interface(request: Request, user: str, deck_id: int, deck_name: 
 
                     document.getElementById('flip-btn').style.display = 'none';
                     document.getElementById('ease-buttons').style.display = 'flex';
-                    document.getElementById('session-stats').textContent = 'Back side shown - Choose difficulty';
+                    document.getElementById('session-stats').textContent = 'Choose difficulty';
 
                 }} catch (error) {{
                     alert('Error flipping card: ' + error.message);
@@ -356,8 +432,8 @@ async def study_interface(request: Request, user: str, deck_id: int, deck_name: 
 
                     document.getElementById('flip-btn').style.display = 'inline-block';
                     document.getElementById('ease-buttons').style.display = 'none';
-                    document.getElementById('session-stats').textContent = 'Next card - Front side shown';
-                    document.getElementById('card-counter').textContent = `Card #${{cardCount}}`;
+                    document.getElementById('session-stats').textContent = 'Front side shown';
+                    document.getElementById('card-counter').innerHTML = `Cards: <span class="stat-value">${{cardCount}}</span>`;
 
                 }} catch (error) {{
                     alert('Error answering card: ' + error.message);
@@ -445,20 +521,30 @@ async def study_interface(request: Request, user: str, deck_id: int, deck_name: 
                 const content = document.getElementById('card-content');
 
                 if (typeof cardData === 'string') {{
-                    content.innerHTML = cardData;
+                    content.innerHTML = `<div class="field-item"><div class="field-value">${{cardData}}</div></div>`;
                     return;
                 }}
 
                 if (cardData && typeof cardData === 'object') {{
                     let html = '';
                     for (const [field, value] of Object.entries(cardData)) {{
-                        if (field !== 'card_id' && field !== 'media_files' && field !== 'ease_options') {{
-                            html += `<div><strong>${{field}}:</strong> ${{value}}</div>`;
+                        if (field !== 'card_id' && field !== 'media_files' && field !== 'ease_options' && value && value.trim() !== '') {{
+                            // Clean up field names for display
+                            const displayField = field
+                                .replace(/_/g, ' ')
+                                .replace(/\b\w/g, l => l.toUpperCase());
+
+                            html += `
+                                <div class="field-item">
+                                    <div class="field-label">${{displayField}}</div>
+                                    <div class="field-value">${{value}}</div>
+                                </div>
+                            `;
                         }}
                     }}
-                    content.innerHTML = html || '<p>No content to display</p>';
+                    content.innerHTML = html || '<div class="field-item"><div class="field-value">No content to display</div></div>';
                 }} else {{
-                    content.innerHTML = '<p>Loading...</p>';
+                    content.innerHTML = '<div class="field-item"><div class="field-value">Loading...</div></div>';
                 }}
             }}
         </script>
