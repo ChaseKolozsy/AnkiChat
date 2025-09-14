@@ -1011,6 +1011,11 @@ async def home(request: Request):
                     if (result.success) {
                         updateVocabularyQueue(result.queue_status);
 
+                        // Show study interface when vocabulary cards are detected
+                        if (result.queue_status.queue_length > 0) {
+                            document.getElementById('study-interface').classList.remove('hidden');
+                        }
+
                         // If new cards available and no current vocabulary card
                         if (result.queue_status.queue_length > 0 && !vocabularySession.currentCard) {
                             const nextCard = await getNextVocabularyCard();
