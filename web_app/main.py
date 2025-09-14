@@ -18,6 +18,7 @@ project_root = Path(__file__).parents[1]
 sys.path.insert(0, str(project_root))
 
 from AnkiClient.src.operations import deck_ops, study_ops, card_ops
+from typing import Dict, List, Any, Tuple, Set
 
 app = FastAPI(title="AnkiChat Web Interface", description="Web interface for Anki study sessions")
 
@@ -35,6 +36,11 @@ if templates_path.exists():
 current_user = None
 current_deck_id = None
 study_session = {}
+
+# In-memory wiring for new vocab flow
+cached_answers: Dict[str, Dict[int, int]] = {}
+seen_cards_in_deck: Dict[Tuple[str, int], Set[int]] = {}
+vocab_stack: Dict[str, List[Dict[str, Any]]] = {}
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
@@ -318,6 +324,16 @@ async def study_interface(request: Request, user: str, deck_id: int, deck_name: 
             }}
             .back-link {{ position: absolute; top: 20px; left: 20px; color: #0084ff; text-decoration: none; }}
             .back-link:hover {{ text-decoration: underline; }}
+            /* Vocab flow */
+            .tools {{ margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap; }}
+            .tools .input {{ flex: 1; min-width: 260px; }}
+            .tools input {{ width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #444; background: #1a1a1a; color: #eee; }}
+            .subtle {{ color: #a0a0a0; font-size: 13px; }}
+            .panel {{ background: #232323; border: 1px solid #3a3a3a; border-radius: 10px; padding: 16px; margin-top: 16px; }}
+            .panel h3 {{ margin-bottom: 10px; }}
+            .vocab-card {{ background: #2a2a2a; border: 1px solid #444; padding: 12px; border-radius: 8px; margin-bottom: 10px; }}
+            .vocab-actions {{ display: flex; gap: 8px; margin-top: 8px; }}
+            .hidden {{ display: none; }}
         </style>
     </head>
     <body>
@@ -349,6 +365,34 @@ async def study_interface(request: Request, user: str, deck_id: int, deck_name: 
                     <button class="ease-btn hard" onclick="answerCard(2)">Hard</button>
                     <button class="ease-btn good" onclick="answerCard(3)">Good</button>
                     <button class="ease-btn easy" onclick="answerCard(4)">Easy</button>
+                </div>
+
+                <div class="panel">
+                    <h3>Vocab Tools</h3>
+                    <div class="tools">
+                        <div class="input">
+                            <input id="unknown-words" placeholder="Enter unknown words, comma-separated" />
+                            <div class="subtle">Will use the current card content as context.</div>
+                        </div>
+                        <button class="btn secondary" id="define-words-btn" onclick="defineWithContext()">Define with context</button>
+                    </div>
+                    <div id="late-answer" class="tools hidden">
+                        <div class="subtle">Session closed for safety. Choose answer for cached card:</div>
+                        <div class="ease-buttons" style="display:flex;">
+                            <button class="ease-btn again" onclick="cacheAnswer(1)">Again</button>
+                            <button class="ease-btn hard" onclick="cacheAnswer(2)">Hard</button>
+                            <button class="ease-btn good" onclick="cacheAnswer(3)">Good</button>
+                            <button class="ease-btn easy" onclick="cacheAnswer(4)">Easy</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card" id="vocab-review" style="display:none;">
+                <h2>Vocab Review</h2>
+                <div id="vocab-list"></div>
+                <div class="controls" style="justify-content:flex-start;">
+                    <button class="btn" onclick="startAutoStudy()">Start Auto Study</button>
                 </div>
             </div>
         </div>
@@ -547,6 +591,85 @@ async def study_interface(request: Request, user: str, deck_id: int, deck_name: 
                     content.innerHTML = '<div class="field-item"><div class="field-value">Loading...</div></div>';
                 }}
             }}
+
+            // --- Vocab flow wiring ---
+            async function defineWithContext() {{
+                const input = document.getElementById('unknown-words').value.trim();
+                if (!input) {{ alert('Enter one or more words.'); return; }}
+                const words = input.split(',').map(w => w.trim()).filter(Boolean);
+                if (words.length === 0) {{ alert('No valid words.'); return; }}
+
+                await closeSession(true);
+                const late = document.getElementById('late-answer');
+                if (late) late.classList.remove('hidden');
+
+                const sourceHtml = document.getElementById('card-content').innerHTML;
+                try {{
+                    await makeStudyRequest('/api/vocab/define', {{ username, deck_id: deckId, words, source_card: {{ html: sourceHtml }} }});
+                    const review = document.getElementById('vocab-review');
+                    if (review) review.style.display = 'block';
+                    setTimeout(pollForNewCards, 500); // first quick poll
+                    window.__vocabPollTimer = setInterval(pollForNewCards, 3000);
+                }} catch (e) {{ alert('Error submitting words: ' + e.message); }}
+            }}
+
+            async function pollForNewCards() {{
+                try {{
+                    const res = await fetch(`/api/vocab/poll-new?username=${{encodeURIComponent(username)}}&deck_id=${{encodeURIComponent(deckId)}}`);
+                    if (!res.ok) return;
+                    const items = await res.json();
+                    if (Array.isArray(items) && items.length) {{
+                        const list = document.getElementById('vocab-list');
+                        for (const item of items) {{
+                            const div = document.createElement('div');
+                            div.className = 'vocab-card';
+                            const word = (item.fields && (item.fields.Word || item.fields.word || '')) || '';
+                            const definition = (item.fields && (item.fields.Definition || item.fields.definition || '')) || '';
+                            const example = (item.fields && (item.fields['Example Sentence'] || item.fields.example || '')) || '';
+                            div.innerHTML = `
+                                <div><strong>${word}</strong></div>
+                                <div>${definition}</div>
+                                <div class="subtle">${example}</div>
+                                <div class="vocab-actions">
+                                    <button class="btn" onclick="markUnderstood(${item.card_id})">Understood/Studied</button>
+                                    <button class="btn secondary" onclick="requestMore(${item.card_id})">Request additional definitions</button>
+                                </div>
+                            `;
+                            list.prepend(div);
+                        }}
+                    }}
+                }} catch (e) {{ console.warn('Polling error', e); }}
+            }}
+
+            async function cacheAnswer(ease) {{
+                try {{
+                    await makeStudyRequest('/api/session/cache-answer', {{ username, rating: ease }});
+                    const late = document.getElementById('late-answer');
+                    if (late) late.classList.add('hidden');
+                }} catch (e) {{ alert('Error caching answer: ' + e.message); }}
+            }}
+
+            async function markUnderstood(cardId) {{
+                try {{ await makeStudyRequest('/api/vocab/mark-understood', {{ username, card_id: cardId }}); }} catch (e) {{}}
+            }}
+
+            async function requestMore(cardId) {{
+                const wordsInput = prompt('Words to define (comma-separated):');
+                if (!wordsInput) return;
+                const words = wordsInput.split(',').map(w => w.trim()).filter(Boolean);
+                try {{
+                    const res = await fetch(`/api/vocab/card-contents?username=${{encodeURIComponent(username)}}&card_id=${{encodeURIComponent(cardId)}}`);
+                    const source = await res.json();
+                    await makeStudyRequest('/api/vocab/request-more', {{ username, words, source_card: source }});
+                }} catch (e) {{ console.warn(e); }}
+            }}
+
+            async function startAutoStudy() {{
+                try {{
+                    const res = await makeStudyRequest('/api/vocab/auto-study', {{ username, deck_id: deckId }});
+                    alert(res.message || 'Auto study started');
+                }} catch (e) {{ alert('Error starting auto study: ' + e.message); }}
+            }}
         </script>
     </body>
     </html>
@@ -623,6 +746,117 @@ async def study_close(request: Request):
         # Don't raise error for close requests - just log and return success
         print(f"Warning: Error closing study session: {e}")
         return {"message": "Session closed"}
+
+@app.post("/api/session/cache-answer")
+async def api_cache_answer(request: Request):
+    data = await request.json()
+    username = data.get("username")
+    rating = int(data.get("rating")) if str(data.get("rating")).isdigit() else None
+    card_id = data.get("card_id")
+    if not username or rating is None:
+        raise HTTPException(status_code=400, detail="username and rating required")
+    if card_id is not None:
+        try:
+            card_id = int(card_id)
+        except Exception:
+            card_id = None
+    # Store rating; if no card_id, keep under a special key
+    if card_id is None:
+        cached_answers.setdefault(username, {})[-1] = rating
+    else:
+        cached_answers.setdefault(username, {})[card_id] = rating
+    return {"ok": True}
+
+@app.post("/api/vocab/define")
+async def api_vocab_define(request: Request):
+    data = await request.json()
+    username = data.get("username")
+    deck_id = int(data.get("deck_id"))
+    words = data.get("words") or []
+    source_card = data.get("source_card") or {}
+    vocab_stack.setdefault(username, []).append({
+        "type": "define",
+        "words": words,
+        "source_card": source_card,
+        "deck_id": deck_id,
+    })
+    # Seed seen set to avoid returning entire deck as new
+    key = (username, deck_id)
+    if key not in seen_cards_in_deck:
+        seen_cards_in_deck[key] = set()
+        try:
+            existing = deck_ops.get_cards_in_deck(deck_id, username)
+            if isinstance(existing, list):
+                for c in existing:
+                    cid = c.get('id') or c.get('card_id')
+                    if cid is not None:
+                        seen_cards_in_deck[key].add(int(cid))
+        except Exception as e:
+            print(f"Warn: seeding seen set failed: {e}")
+    return {"ok": True, "queued": len(words)}
+
+@app.get("/api/vocab/poll-new")
+async def api_vocab_poll_new(request: Request, username: str, deck_id: int):
+    key = (username, int(deck_id))
+    seen = seen_cards_in_deck.setdefault(key, set())
+    try:
+        cards = deck_ops.get_cards_in_deck(int(deck_id), username)
+        new_items: List[Dict[str, Any]] = []
+        if isinstance(cards, list):
+            for c in cards:
+                cid = c.get('id') or c.get('card_id')
+                if cid is None:
+                    continue
+                cid = int(cid)
+                if cid not in seen:
+                    detail = card_ops.get_card_contents(card_id=cid, username=username)
+                    new_items.append({
+                        "card_id": cid,
+                        "fields": detail.get('fields', {}),
+                        "note_id": detail.get('note_id')
+                    })
+                    seen.add(cid)
+        return new_items
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/vocab/card-contents")
+async def api_vocab_card_contents(username: str, card_id: int):
+    try:
+        return card_ops.get_card_contents(card_id=int(card_id), username=username)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/vocab/mark-understood")
+async def api_vocab_mark_understood(request: Request):
+    data = await request.json()
+    username = data.get("username")
+    card_id = data.get("card_id")
+    if not username or card_id is None:
+        raise HTTPException(status_code=400, detail="username and card_id required")
+    cached_answers.setdefault(username, {})[int(card_id)] = 3
+    return {"ok": True}
+
+@app.post("/api/vocab/request-more")
+async def api_vocab_request_more(request: Request):
+    data = await request.json()
+    username = data.get("username")
+    words = data.get("words") or []
+    source_card = data.get("source_card") or {}
+    vocab_stack.setdefault(username, []).append({
+        "type": "request-more",
+        "words": words,
+        "source_card": source_card,
+    })
+    return {"ok": True, "queued": len(words)}
+
+@app.post("/api/vocab/auto-study")
+async def api_vocab_auto_study(request: Request):
+    data = await request.json()
+    username = data.get("username")
+    deck_id = int(data.get("deck_id"))
+    # Placeholder wiring for future implementation
+    return {"ok": True, "message": "Auto study wiring in place (implementation pending)."}
 
 def run_server(host: str = "127.0.0.1", port: int = 8000):
     """Run the web interface server."""
