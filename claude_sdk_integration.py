@@ -428,8 +428,10 @@ Használd a define-with-context parancs pontos utasításait és hozz létre min
 
     def get_vocabulary_queue_status(self) -> Dict[str, Any]:
         """Get current vocabulary queue status"""
+        queue_length = len(self.vocabulary_queue.queue)
+        logger.debug(f"Vocabulary queue status: queue_length={queue_length}, queue contents: {[card.get('card_id', card.get('id', 'unknown')) for card in self.vocabulary_queue.queue]}")
         return {
-            'queue_length': len(self.vocabulary_queue.queue),
+            'queue_length': queue_length,
             'cached_answers': len(self.vocabulary_queue.card_answer_mapping),
             'processed_cards': len(self.vocabulary_queue.processed_cards)
         }

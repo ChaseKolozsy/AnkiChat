@@ -983,7 +983,7 @@ async def home(request: Request):
                     updateVocabularyStatus();
 
                     // Move to next vocabulary card
-                    const nextCard = getNextVocabularyCard();
+                    const nextCard = await getNextVocabularyCard();
                     if (nextCard) {
                         displayVocabularyCard(nextCard);
                     } else {
@@ -1019,7 +1019,7 @@ async def home(request: Request):
                             document.getElementById('study-interface').classList.remove('hidden');
                         }
 
-                        // If new cards available and no current vocabulary card
+                        // If new cards available, get and display one
                         if (result.queue_status.queue_length > 0 && !vocabularySession.currentCard) {
                             const nextCard = await getNextVocabularyCard();
                             if (nextCard) {
