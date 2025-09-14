@@ -621,6 +621,11 @@ async def home(request: Request):
 
                 const result = await response.json();
                 if (result.success) {
+                    // Debug: Log the card structure received
+                    console.log('DEBUG - Flipped card structure:', result.current_card);
+                    console.log('DEBUG - Card type:', typeof result.current_card);
+                    console.log('DEBUG - Card keys:', Object.keys(result.current_card || {}));
+
                     // Update the card display with the flipped card
                     grammarSession.currentCard = result.current_card;
                     displayGrammarCard(result.current_card);
@@ -1076,12 +1081,42 @@ async def flip_card(request: Request):
         )
 
         if status_code == 200:
+            # Debug: Print the result structure
+            print(f"DEBUG - Flip result structure: {result}")
+            print(f"DEBUG - Result type: {type(result)}")
+            print(f"DEBUG - Result keys: {result.keys() if isinstance(result, dict) else 'Not a dict'}")
+
+            # Transform the result to match the expected card structure
+            transformed_card = result
+
+            # If the result doesn't have front/back or fields structure, try to create it
+            if not ('front' in result or 'back' in result or 'fields' in result):
+                # Check if it has a typical Anki card structure and transform it
+                if 'question' in result and 'answer' in result:
+                    # Transform question/answer format to front/back
+                    transformed_card = {
+                        'front': {'Question': result['question']},
+                        'back': {'Answer': result['answer']},
+                        'card_id': result.get('card_id', result.get('id'))
+                    }
+                elif 'fields' in result and isinstance(result['fields'], dict):
+                    # If fields exist but at wrong level, use them directly
+                    transformed_card = result
+                else:
+                    # Create a basic structure from whatever fields exist
+                    fields = {}
+                    for key, value in result.items():
+                        if key not in ['card_id', 'id', 'note_id'] and isinstance(value, str):
+                            fields[key] = value
+                    if fields:
+                        transformed_card = {'fields': fields}
+
             # Update the current card in the session
-            claude_integration.grammar_session.current_card = result
+            claude_integration.grammar_session.current_card = transformed_card
 
             return JSONResponse({
                 "success": True,
-                "current_card": result,
+                "current_card": transformed_card,
                 "message": "Card flipped successfully"
             })
         else:
