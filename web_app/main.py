@@ -45,6 +45,8 @@ cached_answers: Dict[str, Dict[int, int]] = {}
 seen_cards_in_deck: Dict[Tuple[str, int], Set[int]] = {}
 vocab_stack: Dict[str, List[Dict[str, Any]]] = {}
 vocab_answers: Dict[str, Dict[int, int]] = {}  # username -> {card_id: rating}
+claude_logs: Dict[str, List[str]] = {}  # request_id -> logs
+claude_status: Dict[str, str] = {}      # request_id -> running/completed/error
 
 # Default deck where vocab cards are created (from define-with-context.md).
 # Adjust if your environment differs.
@@ -404,6 +406,11 @@ async def study_interface(request: Request, user: str, deck_id: int, deck_name: 
                     <button class="btn" onclick="startAutoStudy()">Submit Answers</button>
                 </div>
             </div>
+
+            <div class="card" id="claude-panel" style="display:none;">
+                <h2>Claude Activity</h2>
+                <pre id="claude-log" style="max-height: 260px; overflow:auto; background:#1a1a1a; padding:12px; border-radius:8px; border:1px solid #333;"></pre>
+            </div>
         </div>
 
         <script>
@@ -648,11 +655,15 @@ async def study_interface(request: Request, user: str, deck_id: int, deck_name: 
 
                 const sourceHtml = document.getElementById('card-content').innerHTML;
                 try {{
-                    await makeStudyRequest('/api/vocab/define', {{ username, deck_id: deckId, words, source_card: {{ html: sourceHtml }} }});
+                    const resp = await makeStudyRequest('/api/vocab/define', {{ username, deck_id: deckId, words, source_card: {{ html: sourceHtml }} }});
                     const review = document.getElementById('vocab-review');
                     if (review) review.style.display = 'block';
                     setTimeout(pollForNewCards, 500); // first quick poll
                     window.__vocabPollTimer = setInterval(pollForNewCards, 3000);
+                    if (resp && resp.request_id) {{
+                        document.getElementById('claude-panel').style.display = 'block';
+                        startClaudeStatusPolling(resp.request_id);
+                    }}
                 }} catch (e) {{ alert('Error submitting words: ' + e.message); }}
             }}
 
@@ -714,6 +725,24 @@ async def study_interface(request: Request, user: str, deck_id: int, deck_name: 
                     const res = await makeStudyRequest('/api/vocab/auto-study', {{ username, deck_id: deckId }});
                     alert(res.message || 'Auto study started');
                 }} catch (e) {{ alert('Error starting auto study: ' + e.message); }}
+            }}
+
+            function startClaudeStatusPolling(requestId) {{
+                const el = document.getElementById('claude-log');
+                if (!el) return;
+                const poll = async () => {{
+                    try {{
+                        const res = await fetch(`/api/vocab/define-status?request_id=${{encodeURIComponent(requestId)}}`);
+                        if (!res.ok) return;
+                        const data = await res.json();
+                        el.textContent = (data.logs || []).join("\n");
+                        if (data.status === 'completed' || data.status === 'error') {{
+                            clearInterval(window.__claudeStatusPoller);
+                        }}
+                    }} catch {{}}
+                }};
+                poll();
+                window.__claudeStatusPoller = setInterval(poll, 1500);
             }}
         </script>
     </body>
@@ -852,10 +881,28 @@ async def api_vocab_define(request: Request):
                         seen_cards_in_deck[key].add(int(cid))
         except Exception as e:
             print(f"Warn: seeding seen set failed: {e}")
-    # Kick off Claude task in background
+    # Kick off Claude task in background with logging
     src_ctx = build_source_context_from_payload(source_card)
-    asyncio.create_task(define_with_context_async(words=words, source_context=src_ctx, username=username))
-    return {"ok": True, "queued": len(words), "started": True}
+    req_id = f"def_{int(time.time()*1000)}"
+    claude_logs[req_id] = [f"Starting Claude task for: {', '.join(words)}"]
+    claude_status[req_id] = "running"
+
+    async def _runner():
+        def cb(msg: str):
+            claude_logs.setdefault(req_id, []).append(msg)
+            # Limit log size
+            if len(claude_logs[req_id]) > 500:
+                claude_logs[req_id] = claude_logs[req_id][-500:]
+        try:
+            result = await define_with_context_async(words=words, source_context=src_ctx, username=username, on_message=cb)
+            claude_logs[req_id].append(f"Completed. Created: {result.get('count', 0)}")
+            claude_status[req_id] = "completed"
+        except Exception as e:
+            claude_logs[req_id].append(f"Error: {e}")
+            claude_status[req_id] = "error"
+    asyncio.create_task(_runner())
+
+    return {"ok": True, "queued": len(words), "started": True, "request_id": req_id}
 
 @app.get("/api/vocab/poll-new")
 async def api_vocab_poll_new(request: Request, username: str, deck_id: int):
@@ -912,10 +959,33 @@ async def api_vocab_request_more(request: Request):
         "words": words,
         "source_card": source_card,
     })
-    # Background Claude call with LIFO priority
+    # Background Claude call with LIFO priority and logging
     src_ctx = build_source_context_from_payload(source_card)
-    asyncio.create_task(define_with_context_async(words=words, source_context=src_ctx, username=username))
-    return {"ok": True, "queued": len(words), "started": True}
+    req_id = f"def_{int(time.time()*1000)}"
+    claude_logs[req_id] = [f"Starting Claude task for: {', '.join(words)}"]
+    claude_status[req_id] = "running"
+
+    async def _runner():
+        def cb(msg: str):
+            claude_logs.setdefault(req_id, []).append(msg)
+            if len(claude_logs[req_id]) > 500:
+                claude_logs[req_id] = claude_logs[req_id][-500:]
+        try:
+            result = await define_with_context_async(words=words, source_context=src_ctx, username=username, on_message=cb)
+            claude_logs[req_id].append(f"Completed. Created: {result.get('count', 0)}")
+            claude_status[req_id] = "completed"
+        except Exception as e:
+            claude_logs[req_id].append(f"Error: {e}")
+            claude_status[req_id] = "error"
+    asyncio.create_task(_runner())
+
+    return {"ok": True, "queued": len(words), "started": True, "request_id": req_id}
+
+@app.get("/api/vocab/define-status")
+async def api_vocab_define_status(request_id: str):
+    logs = claude_logs.get(request_id, [])
+    status = claude_status.get(request_id, "unknown")
+    return {"status": status, "logs": logs}
 
 @app.post("/api/vocab/auto-study")
 async def api_vocab_auto_study(request: Request):

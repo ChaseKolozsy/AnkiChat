@@ -62,7 +62,7 @@ Remember:
 
 
 async def define_with_context_async(
-    *, words: List[str], source_context: str, username: str = "chase"
+    *, words: List[str], source_context: str, username: str = "chase", on_message: Optional[callable] = None
 ) -> Dict[str, Any]:
     """
     Call Claude Code SDK with embedded instructions and context.
@@ -100,8 +100,18 @@ async def define_with_context_async(
                 if hasattr(message, "content") and message.content:
                     for block in message.content:
                         if hasattr(block, "text") and block.text:
+                            if on_message:
+                                try:
+                                    on_message(block.text)
+                                except Exception:
+                                    pass
                             chunks.append(block.text)
                 else:
+                    if on_message:
+                        try:
+                            on_message(str(message))
+                        except Exception:
+                            pass
                     chunks.append(str(message))
             except Exception:
                 chunks.append(str(message))
@@ -146,4 +156,3 @@ def build_source_context_from_payload(payload: Any) -> str:
     if isinstance(payload, str):
         return payload
     return str(payload)
-
