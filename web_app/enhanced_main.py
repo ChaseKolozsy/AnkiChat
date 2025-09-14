@@ -513,6 +513,9 @@ async def home(request: Request):
             }
 
             deckSelection.classList.remove('hidden');
+
+            // Start vocabulary polling automatically when user loads decks
+            startVocabularyPolling();
         }
 
         function selectDeck(deckId, deckName) {
