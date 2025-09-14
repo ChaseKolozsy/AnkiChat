@@ -624,6 +624,30 @@ async def home(request: Request):
                         `;
                     }
                 });
+            } else if (card && typeof card === 'object') {
+                // Direct field iteration (like old main.py) - this is what actually works!
+                for (const [field, value] of Object.entries(card)) {
+                    // Skip metadata fields and empty values
+                    if (field !== 'card_id' && field !== 'id' && field !== 'note_id' &&
+                        field !== 'media_files' && field !== 'ease_options' &&
+                        value && typeof value === 'string' && value.trim() !== '') {
+
+                        // Clean up field names for display
+                        const displayField = field
+                            .replace(/_/g, ' ')
+                            .replace(/\b\w/g, l => l.toUpperCase());
+
+                        html += `
+                            <div class="card-field">
+                                <div class="field-label">${displayField}</div>
+                                <div class="field-content">${value}</div>
+                            </div>
+                        `;
+                    }
+                }
+            } else if (typeof card === 'string') {
+                // Handle string responses
+                html = `<div class="card-field"><div class="field-content">${card}</div></div>`;
             }
 
             display.innerHTML = html || '<p>No field data available</p>';
@@ -1143,37 +1167,12 @@ async def flip_card(request: Request):
             print(f"DEBUG - Result type: {type(result)}")
             print(f"DEBUG - Result keys: {result.keys() if isinstance(result, dict) else 'Not a dict'}")
 
-            # Transform the result to match the expected card structure
-            transformed_card = result
-
-            # If the result doesn't have front/back or fields structure, try to create it
-            if not ('front' in result or 'back' in result or 'fields' in result):
-                # Check if it has a typical Anki card structure and transform it
-                if 'question' in result and 'answer' in result:
-                    # Transform question/answer format to front/back
-                    transformed_card = {
-                        'front': {'Question': result['question']},
-                        'back': {'Answer': result['answer']},
-                        'card_id': result.get('card_id', result.get('id'))
-                    }
-                elif 'fields' in result and isinstance(result['fields'], dict):
-                    # If fields exist but at wrong level, use them directly
-                    transformed_card = result
-                else:
-                    # Create a basic structure from whatever fields exist
-                    fields = {}
-                    for key, value in result.items():
-                        if key not in ['card_id', 'id', 'note_id'] and isinstance(value, str):
-                            fields[key] = value
-                    if fields:
-                        transformed_card = {'fields': fields}
-
             # Update the current card in the session
-            claude_integration.grammar_session.current_card = transformed_card
+            claude_integration.grammar_session.current_card = result
 
             return JSONResponse({
                 "success": True,
-                "current_card": transformed_card,
+                "current_card": result,
                 "message": "Card flipped successfully"
             })
         else:
