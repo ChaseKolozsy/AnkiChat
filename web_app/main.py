@@ -418,6 +418,7 @@ async def study_interface(request: Request, user: str, deck_id: int, deck_name: 
             let cardFlipped = false;
             let cardCount = 0;
             let currentCardId = null;
+            let currentCardId = null;
 
             const deckId = {deck_id};
             const username = "{user}";
