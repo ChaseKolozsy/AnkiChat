@@ -583,20 +583,22 @@ async def home(request: Request):
             let html = '';
 
             // Handle both the current card data structure (front/back) and legacy fields structure
-            if (card.front) {
-                // Current structure: card has front and possibly back
-                html += '<div class="card-side"><h4>📝 Front</h4>';
-                Object.keys(card.front).forEach(fieldName => {
-                    if (card.front[fieldName] && card.front[fieldName].trim()) {
-                        html += `
-                            <div class="card-field">
-                                <div class="field-label">${fieldName.replace(/_/g, ' ')}</div>
-                                <div class="field-content">${card.front[fieldName]}</div>
-                            </div>
-                        `;
-                    }
-                });
-                html += '</div>';
+            // Check for structured front/back data first (e.g., card with front and back keys)
+            if (card.front || card.back) {
+                if (card.front) {
+                    html += '<div class="card-side"><h4>📝 Front</h4>';
+                    Object.keys(card.front).forEach(fieldName => {
+                        if (card.front[fieldName] && card.front[fieldName].trim()) {
+                            html += `
+                                <div class="card-field">
+                                    <div class="field-label">${fieldName.replace(/_/g, ' ')}</div>
+                                    <div class="field-content">${card.front[fieldName]}</div>
+                                </div>
+                            `;
+                        }
+                    });
+                    html += '</div>';
+                }
 
                 if (card.back) {
                     html += '<div class="card-side"><h4>🎯 Back</h4>';
@@ -612,6 +614,21 @@ async def home(request: Request):
                     });
                     html += '</div>';
                 }
+            }
+            // Check for top-level back/front keys (AnkiAPI flip response format)
+            else if (card.back && typeof card.back === 'object') {
+                html += '<div class="card-side"><h4>🎯 Back</h4>';
+                Object.keys(card.back).forEach(fieldName => {
+                    if (card.back[fieldName] && card.back[fieldName].trim()) {
+                        html += `
+                            <div class="card-field">
+                                <div class="field-label">${fieldName.replace(/_/g, ' ')}</div>
+                                <div class="field-content">${card.back[fieldName]}</div>
+                            </div>
+                        `;
+                    }
+                });
+                html += '</div>';
             } else if (card.fields) {
                 // Legacy structure: card has fields
                 Object.keys(card.fields).forEach(fieldName => {
