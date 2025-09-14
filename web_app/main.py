@@ -173,8 +173,35 @@ async def get_decks(request: Request):
         if not username:
             raise HTTPException(status_code=400, detail="Username is required")
 
-        decks = deck_ops.get_decks(username)
-        return decks
+        decks_response = deck_ops.get_decks(username)
+
+        # Debug: log what we actually received
+        print(f"DEBUG: deck_ops.get_decks returned: {type(decks_response)} -> {decks_response}")
+
+        # Handle different response formats
+        if isinstance(decks_response, list):
+            print(f"DEBUG: Returning list of {len(decks_response)} decks")
+            return decks_response
+        elif isinstance(decks_response, dict):
+            print(f"DEBUG: Got dict with keys: {list(decks_response.keys())}")
+            # Check if it's an error response or wrapped data
+            if 'error' in decks_response:
+                raise HTTPException(status_code=500, detail=decks_response['error'])
+            # If it's a dict with a 'decks' key or similar, extract it
+            if 'decks' in decks_response:
+                print(f"DEBUG: Extracting 'decks' key")
+                return decks_response['decks']
+            # If it looks like a single deck object, wrap in array
+            if 'id' in decks_response and 'name' in decks_response:
+                print(f"DEBUG: Wrapping single deck in array")
+                return [decks_response]
+            # Otherwise return the dict as-is and let frontend handle it
+            print(f"DEBUG: Returning dict as-is")
+            return decks_response
+        else:
+            # Fallback: return empty array
+            print(f"DEBUG: Returning empty array for unknown type: {type(decks_response)}")
+            return []
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -260,13 +287,9 @@ async def study_interface(request: Request, user: str, deck_id: int, deck_name: 
 
             async function startSession() {{
                 try {{
-                    const response = await fetch('/api/study/start', {{
-                        method: 'POST',
-                        headers: {{ 'Content-Type': 'application/json' }},
-                        body: JSON.stringify({{ deck_id: deckId, username, action: 'start' }})
+                    const data = await makeStudyRequest('/api/study/start', {{
+                        deck_id: deckId, username, action: 'start'
                     }});
-
-                    const data = await response.json();
 
                     if (data.message && data.message.includes('No more cards')) {{
                         document.getElementById('card-content').innerHTML = '<p>🎉 No more cards to review! Well done!</p>';
@@ -294,13 +317,9 @@ async def study_interface(request: Request, user: str, deck_id: int, deck_name: 
                 if (!sessionActive) return;
 
                 try {{
-                    const response = await fetch('/api/study/flip', {{
-                        method: 'POST',
-                        headers: {{ 'Content-Type': 'application/json' }},
-                        body: JSON.stringify({{ deck_id: deckId, username, action: 'flip' }})
+                    const data = await makeStudyRequest('/api/study/flip', {{
+                        deck_id: deckId, username, action: 'flip'
                     }});
-
-                    const data = await response.json();
                     cardFlipped = true;
 
                     displayCard(data.back || data);
@@ -318,13 +337,9 @@ async def study_interface(request: Request, user: str, deck_id: int, deck_name: 
                 if (!sessionActive || !cardFlipped) return;
 
                 try {{
-                    const response = await fetch('/api/study/answer', {{
-                        method: 'POST',
-                        headers: {{ 'Content-Type': 'application/json' }},
-                        body: JSON.stringify({{ deck_id: deckId, username, action: ease.toString() }})
+                    const data = await makeStudyRequest('/api/study/answer', {{
+                        deck_id: deckId, username, action: ease.toString()
                     }});
-
-                    const data = await response.json();
 
                     if (data.message && data.message.includes('No more cards')) {{
                         document.getElementById('card-content').innerHTML = '<p>🎉 No more cards to review! Session complete!</p>';
@@ -349,7 +364,9 @@ async def study_interface(request: Request, user: str, deck_id: int, deck_name: 
                 }}
             }}
 
-            async function closeSession() {{
+            async function closeSession(silent = false) {{
+                if (!sessionActive && !silent) return;
+
                 try {{
                     await fetch('/api/study/close', {{
                         method: 'POST',
@@ -358,10 +375,69 @@ async def study_interface(request: Request, user: str, deck_id: int, deck_name: 
                     }});
 
                     sessionActive = false;
-                    window.location.href = '/';
+
+                    if (!silent) {{
+                        window.location.href = '/';
+                    }}
 
                 }} catch (error) {{
-                    alert('Error closing session: ' + error.message);
+                    if (!silent) {{
+                        console.error('Error closing session:', error);
+                        // Still redirect even if close fails
+                        window.location.href = '/';
+                    }}
+                }}
+            }}
+
+            // Cleanup when page is being unloaded
+            window.addEventListener('beforeunload', function(e) {{
+                if (sessionActive) {{
+                    closeSession(true);
+                    // Note: synchronous request in beforeunload is limited, but we try
+                    navigator.sendBeacon('/api/study/close', JSON.stringify({{
+                        deck_id: deckId, username, action: 'close'
+                    }}));
+                }}
+            }});
+
+            // Cleanup when page becomes hidden (mobile/tab switching)
+            document.addEventListener('visibilitychange', function() {{
+                if (document.hidden && sessionActive) {{
+                    closeSession(true);
+                }}
+            }});
+
+            // Cleanup on navigation away from study page
+            window.addEventListener('pagehide', function(e) {{
+                if (sessionActive) {{
+                    closeSession(true);
+                }}
+            }});
+
+            // Handle server disconnection gracefully
+            async function makeStudyRequest(endpoint, data) {{
+                try {{
+                    const response = await fetch(endpoint, {{
+                        method: 'POST',
+                        headers: {{ 'Content-Type': 'application/json' }},
+                        body: JSON.stringify(data)
+                    }});
+
+                    if (!response.ok) {{
+                        if (response.status >= 500) {{
+                            throw new Error('Server connection lost. Study session ended.');
+                        }}
+                        throw new Error(`Server error: ${{response.status}}`);
+                    }}
+
+                    return await response.json();
+                }} catch (error) {{
+                    if (error.name === 'TypeError' && error.message.includes('fetch')) {{
+                        // Network error - server probably stopped
+                        sessionActive = false;
+                        throw new Error('Server connection lost. Please restart the AnkiAPI server.');
+                    }}
+                    throw error;
                 }}
             }}
 
@@ -436,7 +512,21 @@ async def study_answer(request: Request):
 async def study_close(request: Request):
     """Close the study session."""
     try:
-        data = await request.json()
+        # Handle both JSON and raw text (from beacon)
+        content_type = request.headers.get('content-type', '')
+
+        if content_type.startswith('application/json'):
+            data = await request.json()
+        else:
+            # Handle beacon request or other formats
+            body = await request.body()
+            try:
+                import json
+                data = json.loads(body.decode('utf-8'))
+            except:
+                # Fallback for malformed requests
+                return {"message": "Session closed (fallback)"}
+
         result, status_code = study_ops.study(
             deck_id=data["deck_id"],
             action="close",
@@ -444,7 +534,9 @@ async def study_close(request: Request):
         )
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # Don't raise error for close requests - just log and return success
+        print(f"Warning: Error closing study session: {e}")
+        return {"message": "Session closed"}
 
 def run_server(host: str = "127.0.0.1", port: int = 8000):
     """Run the web interface server."""
