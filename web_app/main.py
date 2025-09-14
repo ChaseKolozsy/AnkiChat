@@ -410,6 +410,7 @@ async def study_interface(request: Request, user: str, deck_id: int, deck_name: 
             let sessionActive = false;
             let cardFlipped = false;
             let cardCount = 0;
+            let currentCardId = null;
 
             const deckId = {deck_id};
             const username = "{user}";
@@ -427,9 +428,12 @@ async def study_interface(request: Request, user: str, deck_id: int, deck_name: 
 
                     sessionActive = true;
                     cardFlipped = false;
+                    currentCardId = data.card_id || null;
                     cardCount++;
 
-                    displayCard(data.front || data);
+                    // Try auto-submitting if this card was cached
+                    const maybeFront = await autoSubmitCachedIfNeeded(data);
+                    displayCard(maybeFront || (data.front || data));
 
                     document.getElementById('start-btn').style.display = 'none';
                     document.getElementById('flip-btn').style.display = 'inline-block';
@@ -480,6 +484,7 @@ async def study_interface(request: Request, user: str, deck_id: int, deck_name: 
 
                     cardFlipped = false;
                     cardCount++;
+                    currentCardId = data.card_id || currentCardId;
 
                     displayCard(data.front || data);
 
@@ -601,6 +606,35 @@ async def study_interface(request: Request, user: str, deck_id: int, deck_name: 
                 }}
             }}
 
+            // Auto-skip cached card by flipping + answering automatically
+            async function autoSubmitCachedIfNeeded(initialData) {{
+                try {{
+                    let frontData = initialData.front || initialData;
+                    let guard = 20;
+                    while (guard-- > 0 && currentCardId) {{
+                        const res = await fetch(`/api/session/pop-cached-answer?username=${{encodeURIComponent(username)}}&card_id=${{encodeURIComponent(currentCardId)}}`);
+                        if (!res.ok) break;
+                        const payload = await res.json();
+                        const rating = payload.rating;
+                        if (!rating) break;
+
+                        await makeStudyRequest('/api/study/flip', {{ deck_id: deckId, username, action: 'flip' }});
+                        const ans = await makeStudyRequest('/api/study/answer', {{ deck_id: deckId, username, action: rating.toString() }});
+                        if (ans.message && ans.message.includes('No more cards')) {{
+                            document.getElementById('card-content').innerHTML = '<p>🎉 No more cards to review! Session complete!</p>';
+                            document.getElementById('ease-buttons').style.display = 'none';
+                            document.getElementById('close-btn').style.display = 'inline-block';
+                            document.getElementById('session-stats').textContent = 'Session complete!';
+                            return null;
+                        }}
+                        cardCount++;
+                        frontData = ans.front || ans;
+                        currentCardId = ans.card_id || currentCardId;
+                    }}
+                    return frontData;
+                }} catch (e) {{ console.warn('autoSubmitCachedIfNeeded error', e); return null; }}
+            }}
+
             // --- Vocab flow wiring ---
             async function defineWithContext() {{
                 const input = document.getElementById('unknown-words').value.trim();
@@ -652,7 +686,7 @@ async def study_interface(request: Request, user: str, deck_id: int, deck_name: 
 
             async function cacheAnswer(ease) {{
                 try {{
-                    await makeStudyRequest('/api/session/cache-answer', {{ username, rating: ease }});
+                    await makeStudyRequest('/api/session/cache-answer', {{ username, rating: ease, card_id: currentCardId }});
                     const late = document.getElementById('late-answer');
                     if (late) late.classList.add('hidden');
                 }} catch (e) {{ alert('Error caching answer: ' + e.message); }}
@@ -775,6 +809,20 @@ async def api_cache_answer(request: Request):
     else:
         cached_answers.setdefault(username, {})[card_id] = rating
     return {"ok": True}
+
+@app.get("/api/session/pop-cached-answer")
+async def api_pop_cached_answer(username: str, card_id: int):
+    try:
+        rating = None
+        card_id = int(card_id)
+        by_user = cached_answers.get(username, {})
+        if card_id in by_user:
+            rating = by_user.pop(card_id)
+            if not by_user:
+                cached_answers.pop(username, None)
+        return {"rating": rating}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/vocab/define")
 async def api_vocab_define(request: Request):
