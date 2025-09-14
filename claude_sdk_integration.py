@@ -91,8 +91,8 @@ class ClaudeSDKIntegration:
         self.vocabulary_queue = VocabularyQueueManager()
         self.polling_active = False
         self.claude_sdk_available = False
-        # Deck where new vocabulary cards are created (must match creation template)
-        self.vocab_deck_id: int = 1756509006667
+        # Deck to monitor for new vocabulary cards (default Anki deck id: 1)
+        self.vocab_deck_id: int = 1
         self._check_sdk_availability()
 
     def set_vocabulary_deck(self, deck_id: int):
@@ -193,8 +193,21 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
                 try:
                     self.vocabulary_queue.queue.clear()
                     self.vocabulary_queue.card_answer_mapping.clear()
+                    self.vocabulary_queue.seen_card_ids.clear()
                 except Exception:
                     pass
+
+                # Seed seen IDs synchronously to exclude all existing cards in default deck (1)
+                try:
+                    from AnkiClient.src.operations.deck_ops import get_cards_in_deck
+                    existing_cards = get_cards_in_deck(deck_id=self.vocab_deck_id, username="chase")
+                    if isinstance(existing_cards, list):
+                        self.vocabulary_queue.record_initial_cards(existing_cards)
+                        logger.info(
+                            f"Seeded {len(self.vocabulary_queue.seen_card_ids)} existing cards before starting poll"
+                        )
+                except Exception as e:
+                    logger.warning(f"Synchronous vocabulary seeding failed: {e}")
 
                 # Start vocabulary polling against configured vocab deck
                 await self._start_vocabulary_polling()
