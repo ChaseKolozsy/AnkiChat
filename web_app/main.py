@@ -18,6 +18,8 @@ project_root = Path(__file__).parents[1]
 sys.path.insert(0, str(project_root))
 
 from AnkiClient.src.operations import deck_ops, study_ops, card_ops
+from web_app.claude_sdk_integration import define_with_context_async, build_source_context_from_payload
+import asyncio
 from typing import Dict, List, Any, Tuple, Set
 
 app = FastAPI(title="AnkiChat Web Interface", description="Web interface for Anki study sessions")
@@ -793,7 +795,10 @@ async def api_vocab_define(request: Request):
                         seen_cards_in_deck[key].add(int(cid))
         except Exception as e:
             print(f"Warn: seeding seen set failed: {e}")
-    return {"ok": True, "queued": len(words)}
+    # Kick off Claude task in background
+    src_ctx = build_source_context_from_payload(source_card)
+    asyncio.create_task(define_with_context_async(words=words, source_context=src_ctx, username=username))
+    return {"ok": True, "queued": len(words), "started": True}
 
 @app.get("/api/vocab/poll-new")
 async def api_vocab_poll_new(request: Request, username: str, deck_id: int):
@@ -848,7 +853,10 @@ async def api_vocab_request_more(request: Request):
         "words": words,
         "source_card": source_card,
     })
-    return {"ok": True, "queued": len(words)}
+    # Background Claude call with LIFO priority
+    src_ctx = build_source_context_from_payload(source_card)
+    asyncio.create_task(define_with_context_async(words=words, source_context=src_ctx, username=username))
+    return {"ok": True, "queued": len(words), "started": True}
 
 @app.post("/api/vocab/auto-study")
 async def api_vocab_auto_study(request: Request):

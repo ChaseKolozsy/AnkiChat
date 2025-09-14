@@ -50,7 +50,14 @@ dependencies = [
     "sqlalchemy",
     "asyncpg",
     "mcp",
-    "mcp-grep"
+    "mcp-grep",
+    "claude-code-sdk"
+]
+
+# Claude Code SDK for AI integration
+[project.optional-dependencies]
+claude = [
+    "claude-code-sdk"
 ]
 
 [project.scripts]
@@ -66,4 +73,3 @@ anki_chat = ["*"]
 src = ["**/*"]
 AnkiClient = ["**/*"]
 web_app = ["**/*"]
-
