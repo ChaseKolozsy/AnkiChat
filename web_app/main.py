@@ -20,6 +20,7 @@ sys.path.insert(0, str(project_root))
 from AnkiClient.src.operations import deck_ops, study_ops, card_ops
 from web_app.claude_sdk_integration import define_with_context_async, build_source_context_from_payload
 import asyncio
+import time
 from typing import Dict, List, Any, Tuple, Set
 
 app = FastAPI(title="AnkiChat Web Interface", description="Web interface for Anki study sessions")
@@ -43,6 +44,12 @@ study_session = {}
 cached_answers: Dict[str, Dict[int, int]] = {}
 seen_cards_in_deck: Dict[Tuple[str, int], Set[int]] = {}
 vocab_stack: Dict[str, List[Dict[str, Any]]] = {}
+vocab_answers: Dict[str, Dict[int, int]] = {}  # username -> {card_id: rating}
+
+# Default deck where vocab cards are created (from define-with-context.md).
+# Adjust if your environment differs.
+VOCAB_DECK_ID = 1756509006667
+VOCAB_TARGET_DECK_NAME = "Hungarian Vocab"
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
@@ -394,7 +401,7 @@ async def study_interface(request: Request, user: str, deck_id: int, deck_name: 
                 <h2>Vocab Review</h2>
                 <div id="vocab-list"></div>
                 <div class="controls" style="justify-content:flex-start;">
-                    <button class="btn" onclick="startAutoStudy()">Start Auto Study</button>
+                    <button class="btn" onclick="startAutoStudy()">Submit Answers</button>
                 </div>
             </div>
         </div>
@@ -802,6 +809,8 @@ async def api_vocab_define(request: Request):
 
 @app.get("/api/vocab/poll-new")
 async def api_vocab_poll_new(request: Request, username: str, deck_id: int):
+    # Always poll the vocab deck where cards are created
+    deck_id = VOCAB_DECK_ID
     key = (username, int(deck_id))
     seen = seen_cards_in_deck.setdefault(key, set())
     try:
@@ -839,7 +848,7 @@ async def api_vocab_mark_understood(request: Request):
     card_id = data.get("card_id")
     if not username or card_id is None:
         raise HTTPException(status_code=400, detail="username and card_id required")
-    cached_answers.setdefault(username, {})[int(card_id)] = 3
+    vocab_answers.setdefault(username, {})[int(card_id)] = 3
     return {"ok": True}
 
 @app.post("/api/vocab/request-more")
@@ -862,9 +871,74 @@ async def api_vocab_request_more(request: Request):
 async def api_vocab_auto_study(request: Request):
     data = await request.json()
     username = data.get("username")
-    deck_id = int(data.get("deck_id"))
-    # Placeholder wiring for future implementation
-    return {"ok": True, "message": "Auto study wiring in place (implementation pending)."}
+    # Use the vocab deck where cards were created
+    deck_id = VOCAB_DECK_ID
+
+    answers = vocab_answers.get(username, {})
+    if not answers:
+        return {"ok": False, "message": "No vocab answers cached."}
+
+    processed: List[int] = []
+    try:
+        # Start session
+        _, _ = study_ops.study(deck_id=deck_id, action="start", username=username)
+
+        # Best-effort loop to flip and submit mapped ratings when encountered
+        max_steps = max(50, len(answers) * 10)
+        for _i in range(max_steps):
+            try:
+                flip_res, _ = study_ops.study(deck_id=deck_id, action="flip", username=username)
+            except Exception:
+                break
+
+            # Try to extract current card id from response
+            current_id = None
+            if isinstance(flip_res, dict):
+                current_id = flip_res.get("card_id")
+                if current_id is None and isinstance(flip_res.get("card"), dict):
+                    current_id = flip_res["card"].get("card_id")
+                # Some payloads use nested fields; attempt a fallback
+                if current_id is None and isinstance(flip_res.get("fields"), dict):
+                    current_id = flip_res.get("fields", {}).get("card_id")
+
+            if current_id is not None and int(current_id) in answers and int(current_id) not in processed:
+                # Submit mapped rating
+                rating = answers[int(current_id)]
+                study_ops.study(deck_id=deck_id, action=str(rating), username=username)
+                processed.append(int(current_id))
+                if len(processed) == len(answers):
+                    break
+            else:
+                # Advance without mapping
+                study_ops.study(deck_id=deck_id, action="1", username=username)
+
+        # Close session
+        try:
+            study_ops.study(deck_id=deck_id, action="close", username=username)
+        except Exception:
+            pass
+
+        # Move processed cards to target vocab deck
+        moved = []
+        if processed:
+            move_res = card_ops.move_cards(card_ids=processed, target_deck_name=VOCAB_TARGET_DECK_NAME, username=username)
+            moved = processed
+
+        # Clear processed from cache
+        for cid in processed:
+            answers.pop(cid, None)
+        if not answers:
+            vocab_answers.pop(username, None)
+
+        return {
+            "ok": True,
+            "processed": processed,
+            "moved": moved,
+            "remaining": list(answers.keys()),
+            "message": f"Auto-studied {len(processed)} cards and moved to '{VOCAB_TARGET_DECK_NAME}'."
+        }
+    except Exception as e:
+        return {"ok": False, "message": f"Auto-study failed: {e}"}
 
 def run_server(host: str = "127.0.0.1", port: int = 8000):
     """Run the web interface server."""
