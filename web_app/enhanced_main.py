@@ -382,7 +382,7 @@ async def home(request: Request):
                 <label for="upload-checkbox">Upload changes to AnkiWeb</label>
             </div>
             <button class="btn" onclick="loginAndLoadDecks()" id="load-decks-btn">Login & Load Decks</button>
-            <button class="btn" onclick="syncOnDemand()" id="sync-btn" style="display: none; background: #28a745;">🔄 Sync Now</button>
+            <button class="btn" onclick="syncOnDemand()" id="sync-btn" style="background: #28a745;" disabled>🔄 Sync Now</button>
             <div id="login-status" style="margin-top: 10px; font-size: 14px;"></div>
         </div>
 
@@ -610,8 +610,8 @@ async def home(request: Request):
                 // Cache credentials for future sync operations
                 cacheCredentials(profileName, username, password, endpoint, upload);
 
-                // Show sync button now that credentials are cached
-                document.getElementById('sync-btn').style.display = 'inline-block';
+                // Enable sync button now that credentials are cached
+                document.getElementById('sync-btn').disabled = false;
 
                 // Step 2: Load decks using the profile name
                 currentUser = profileName; // Use profile name for deck operations
@@ -672,6 +672,40 @@ async def home(request: Request):
             }
         }
 
+        // Close study sessions specifically for sync operations
+        async function closeStudySessionsForSync() {
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+                pollingInterval = null;
+            }
+
+            try {
+                const response = await fetch('/api/close-all-sessions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: currentUser })
+                });
+
+                const result = await response.json();
+                console.log('Close sessions result:', result);
+
+                // Reset UI state
+                document.getElementById('study-interface').classList.add('hidden');
+                document.getElementById('session-controls').classList.add('hidden');
+                document.getElementById('deck-selection').classList.remove('hidden');
+
+                // Reset session state
+                grammarSession = { active: false, paused: false, currentCard: null };
+                vocabularySession = { active: false, queue: [], cachedAnswers: {} };
+                claudeProcessing = false;
+
+                return result;
+            } catch (error) {
+                console.error('Error closing sessions:', error);
+                throw error;
+            }
+        }
+
         // On-demand sync function using cached credentials
         async function syncOnDemand() {
             const credentials = getCachedCredentials();
@@ -686,6 +720,21 @@ async def home(request: Request):
             // Update UI to show syncing
             syncButton.disabled = true;
             syncButton.textContent = '🔄 Syncing...';
+
+            // Check if there's an active study session and close it first
+            if (grammarSession.active) {
+                statusDiv.innerHTML = '<span style="color: #ff6b35;">⏸️ Closing active study session before sync...</span>';
+                console.log('Active study session detected, closing before sync');
+
+                try {
+                    await closeStudySessionsForSync();
+                    console.log('Study session closed successfully');
+                } catch (sessionError) {
+                    console.warn('Error closing study session:', sessionError);
+                    // Continue with sync anyway since collection might be accessible
+                }
+            }
+
             statusDiv.innerHTML = '<span style="color: #0084ff;">🔄 Performing on-demand sync...</span>';
 
             try {
