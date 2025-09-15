@@ -494,6 +494,7 @@ async def home(request: Request):
         let pollingInterval = null;
         let claudeProcessing = false;
         let cachedGrammarAnswer = null;  // Store cached answer for later submission
+        let cachedCounts = { new: 0, learning: 0, review: 0, total: 0 };  // Cache counts to avoid collection conflicts
 
         // Deck loading functions (similar to original)
         async function loadDecks() {
@@ -620,6 +621,13 @@ async def home(request: Request):
             }
 
             try {
+                // First, fetch and cache counts BEFORE starting the session
+                console.log('Fetching counts before starting session...');
+                const countsFetched = await fetchAndCacheCounts();
+                if (!countsFetched) {
+                    console.warn('Failed to fetch initial counts, proceeding anyway');
+                }
+
                 // Start grammar session
                 const response = await fetch('/api/start-dual-session', {
                     method: 'POST',
@@ -646,8 +654,8 @@ async def home(request: Request):
                     // Start vocabulary polling
                     startVocabularyPolling();
 
-                    // Fetch current counts for the selected deck
-                    fetchAndRenderCounts();
+                    // Render the cached counts (no fetching during session)
+                    renderCachedCounts();
 
                     updateSessionStatus('grammar-status', 'Active', 'status-active');
                     updateSessionStatus('vocab-status', 'Polling', 'status-waiting');
@@ -770,14 +778,14 @@ async def home(request: Request):
             }
         }
 
-        async function fetchAndRenderCounts() {
+        async function fetchAndCacheCounts() {
             try {
                 const deckId = selectedDeck ? selectedDeck.id : null;
                 if (!deckId) {
                     console.log('No deck selected, skipping counts fetch');
-                    return;
+                    return false;
                 }
-                console.log('Fetching counts for deck:', deckId, 'user:', currentUser);
+                console.log('Fetching and caching counts for deck:', deckId, 'user:', currentUser);
                 const response = await fetch('/api/study/counts', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -785,29 +793,70 @@ async def home(request: Request):
                 });
                 if (!response.ok) {
                     console.log('Failed to fetch counts:', response.status, response.statusText);
-                    return;
+                    return false;
                 }
                 const data = await response.json();
                 console.log('Received counts data:', data);
-                if (typeof data.new === 'number') {
-                    document.getElementById('count-new').textContent = data.new;
-                    console.log('Updated new count:', data.new);
-                }
-                if (typeof data.learning === 'number') {
-                    document.getElementById('count-learn').textContent = data.learning;
-                    console.log('Updated learning count:', data.learning);
-                }
-                if (typeof data.review === 'number') {
-                    document.getElementById('count-review').textContent = data.review;
-                    console.log('Updated review count:', data.review);
-                }
-                if (typeof data.total === 'number') {
-                    document.getElementById('count-total').textContent = data.total;
-                    console.log('Updated total count:', data.total);
-                }
+
+                // Cache the counts
+                cachedCounts = {
+                    new: typeof data.new === 'number' ? data.new : 0,
+                    learning: typeof data.learning === 'number' ? data.learning : 0,
+                    review: typeof data.review === 'number' ? data.review : 0,
+                    total: typeof data.total === 'number' ? data.total : 0
+                };
+
+                // Update the UI with cached counts
+                renderCachedCounts();
+                return true;
             } catch (e) {
                 console.error('Error fetching counts:', e);
+                return false;
             }
+        }
+
+        function renderCachedCounts() {
+            document.getElementById('count-new').textContent = cachedCounts.new;
+            document.getElementById('count-learn').textContent = cachedCounts.learning;
+            document.getElementById('count-review').textContent = cachedCounts.review;
+            document.getElementById('count-total').textContent = cachedCounts.total;
+            console.log('Rendered cached counts:', cachedCounts);
+        }
+
+        function updateCachedCountsAfterAnswer(ease) {
+            // Decrement the appropriate count based on the card state and answer
+            // This is an approximation since we don't know the exact card state transitions
+            if (cachedCounts.total > 0) {
+                cachedCounts.total--;
+
+                // Simple heuristic: assume we're mostly dealing with new cards initially
+                if (cachedCounts.new > 0) {
+                    cachedCounts.new--;
+                    // Hard answers might move to learning
+                    if (ease <= 2 && cachedCounts.learning >= 0) {
+                        cachedCounts.learning++;
+                    }
+                } else if (cachedCounts.learning > 0) {
+                    cachedCounts.learning--;
+                } else if (cachedCounts.review > 0) {
+                    cachedCounts.review--;
+                }
+
+                renderCachedCounts();
+            }
+        }
+
+        // Deprecated function - kept for compatibility but now uses cached counts
+        async function fetchAndRenderCounts() {
+            // During active study session, just render cached counts
+            if (grammarSession.active) {
+                console.log('Study session active, using cached counts');
+                renderCachedCounts();
+                return;
+            }
+
+            // If no active session, fetch fresh counts
+            await fetchAndCacheCounts();
         }
 
         async function flipCard() {
@@ -1091,8 +1140,8 @@ async def home(request: Request):
                         if (result.next_card) {
                             grammarSession.currentCard = result.next_card;
                             displayGrammarCard(result.next_card);
-                            // Refresh counts after answering
-                            fetchAndRenderCounts();
+                            // Update cached counts after answering
+                            updateCachedCountsAfterAnswer(answer);
                         }
                     }
                 } else {
