@@ -772,11 +772,16 @@ async def home(request: Request):
 
         async function fetchAndRenderCounts() {
             try {
-                console.log('Fetching counts for deck:', currentDeckId, 'user:', currentUser);
+                const deckId = selectedDeck ? selectedDeck.id : null;
+                if (!deckId) {
+                    console.log('No deck selected, skipping counts fetch');
+                    return;
+                }
+                console.log('Fetching counts for deck:', deckId, 'user:', currentUser);
                 const response = await fetch('/api/study/counts', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ deck_id: currentDeckId, username: currentUser })
+                    body: JSON.stringify({ deck_id: deckId, username: currentUser })
                 });
                 if (!response.ok) {
                     console.log('Failed to fetch counts:', response.status, response.statusText);
