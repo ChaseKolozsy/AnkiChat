@@ -448,7 +448,10 @@ async def home(request: Request):
                             <div id="cached-answer-display" style="padding: 10px; background: #404040; border-radius: 6px;">
                                 <!-- Cached answer will be shown here -->
                             </div>
-                            <button class="btn btn-good" onclick="submitCachedAnswer()" style="margin-top: 10px;">
+                            <div id="vocab-completion-requirement" style="margin: 10px 0; padding: 8px; background: #2d1b69; border-radius: 6px; border: 1px solid #ff6b35;">
+                                <strong>📖 Complete vocabulary cards first:</strong> Study all vocabulary cards and submit the auto-session before resuming grammar.
+                            </div>
+                            <button class="btn btn-good" onclick="submitCachedAnswer()" id="submit-cached-btn" style="margin-top: 10px;" disabled>
                                 Submit Cached Answer & Resume Grammar
                             </button>
                         </div>
@@ -1563,6 +1566,9 @@ async def home(request: Request):
                 queueStatus.queue_length > 0 ? 'Cards Available' : 'Polling',
                 queueStatus.queue_length > 0 ? 'status-active' : 'status-waiting'
             );
+
+            // Update cached answer availability when queue status changes
+            updateCachedAnswerAvailability();
         }
 
         function updateVocabularyStatus() {
@@ -1570,6 +1576,41 @@ async def home(request: Request):
             document.getElementById('cached-answers').textContent = cachedCount;
             document.getElementById('auto-ready').textContent = cachedCount > 0 ? 'Yes' : 'No';
             document.getElementById('submit-vocabulary-session').disabled = cachedCount === 0;
+
+            // Update cached answer submission availability
+            updateCachedAnswerAvailability();
+        }
+
+        function updateCachedAnswerAvailability() {
+            const submitCachedBtn = document.getElementById('submit-cached-btn');
+            const vocabRequirement = document.getElementById('vocab-completion-requirement');
+
+            if (!submitCachedBtn || !vocabRequirement) return; // Elements might not exist yet
+
+            // Check if there are vocabulary cards in queue or cached answers waiting
+            const queueLength = parseInt(document.getElementById('queue-length')?.textContent || '0');
+            const cachedAnswers = parseInt(document.getElementById('cached-answers')?.textContent || '0');
+            const autoReady = document.getElementById('auto-ready')?.textContent === 'Yes';
+
+            // Allow submission only if no vocab cards in queue AND no cached answers waiting to be submitted
+            const vocabComplete = queueLength === 0 && cachedAnswers === 0;
+
+            if (vocabComplete) {
+                submitCachedBtn.disabled = false;
+                vocabRequirement.style.display = 'none';
+                submitCachedBtn.style.background = '#28a745'; // Green when available
+            } else {
+                submitCachedBtn.disabled = true;
+                vocabRequirement.style.display = 'block';
+                submitCachedBtn.style.background = '#6c757d'; // Gray when disabled
+
+                // Update requirement message based on current state
+                if (queueLength > 0) {
+                    vocabRequirement.innerHTML = `<strong>📖 Complete vocabulary cards first:</strong> ${queueLength} vocabulary cards remaining in queue.`;
+                } else if (cachedAnswers > 0) {
+                    vocabRequirement.innerHTML = `<strong>📋 Submit vocabulary session first:</strong> ${cachedAnswers} vocabulary answers cached. Click "Submit Vocabulary Session" first.`;
+                }
+            }
         }
 
         function showVocabularyFeedback(success) {
@@ -1611,6 +1652,9 @@ async def home(request: Request):
                     // Clear current card so next poll can show newly created ones
                     vocabularySession.currentCard = null;
                     updateVocabularyStatus();
+
+                    // Check if cached answer can now be submitted
+                    updateCachedAnswerAvailability();
                 } else {
                     alert('Error submitting vocabulary session: ' + result.error);
                 }
