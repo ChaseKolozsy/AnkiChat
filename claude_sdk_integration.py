@@ -93,6 +93,8 @@ class ClaudeSDKIntegration:
         self.claude_sdk_available = False
         # Deck to monitor for new vocabulary cards (default Anki deck id: 1)
         self.vocab_deck_id: int = 1
+        # Poller initialization guard: first pass seeds without enqueuing
+        self.vocab_initialized: bool = False
         self._check_sdk_availability()
 
     def set_vocabulary_deck(self, deck_id: int):
@@ -194,6 +196,7 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
                     self.vocabulary_queue.queue.clear()
                     self.vocabulary_queue.card_answer_mapping.clear()
                     self.vocabulary_queue.seen_card_ids.clear()
+                    self.vocab_initialized = False
                 except Exception:
                     pass
 
@@ -258,20 +261,25 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
                 )
 
                 if isinstance(deck_cards, list):
-                    # Identify truly new cards by unseen IDs
-                    new_count = 0
-                    for card in deck_cards:
-                        cid = self.vocabulary_queue._extract_card_id(card) if isinstance(card, dict) else None
-                        if cid is None:
-                            continue
-                        cid = int(cid)
-                        if cid not in self.vocabulary_queue.seen_card_ids:
-                            self.vocabulary_queue.seen_card_ids.add(cid)
-                            self.vocabulary_queue.add_new_card(card)
-                            new_count += 1
+                    # On first loop after start, seed only; do not enqueue
+                    if not self.vocab_initialized:
+                        self.vocabulary_queue.record_initial_cards(deck_cards)
+                        self.vocab_initialized = True
+                    else:
+                        # Identify truly new cards by unseen IDs
+                        new_count = 0
+                        for card in deck_cards:
+                            cid = self.vocabulary_queue._extract_card_id(card) if isinstance(card, dict) else None
+                            if cid is None:
+                                continue
+                            cid = int(cid)
+                            if cid not in self.vocabulary_queue.seen_card_ids:
+                                self.vocabulary_queue.seen_card_ids.add(cid)
+                                self.vocabulary_queue.add_new_card(card)
+                                new_count += 1
 
-                    if new_count > 0:
-                        logger.info(f"Detected {new_count} new vocabulary cards by ID")
+                        if new_count > 0:
+                            logger.info(f"Detected {new_count} new vocabulary cards by ID")
 
                 # Wait before next poll (5 seconds)
                 await asyncio.sleep(5)
