@@ -330,6 +330,12 @@ async def study_interface(request: Request, user: str, deck_id: int, deck_name: 
         <div class="container">
             <div class="stats">
                 <span class="stat-item">Status: <span class="stat-value" id="session-stats">Ready to start</span></span>
+                <span class="stat-item" id="counts">
+                    New: <span class="stat-value" id="count-new">0</span>
+                     • Learn: <span class="stat-value" id="count-learn">0</span>
+                     • Review: <span class="stat-value" id="count-review">0</span>
+                     • Total: <span class="stat-value" id="count-total">0</span>
+                </span>
                 <span class="stat-item" id="card-counter">Cards: <span class="stat-value">0</span></span>
             </div>
 
@@ -361,6 +367,41 @@ async def study_interface(request: Request, user: str, deck_id: int, deck_name: 
             const deckId = {deck_id};
             const username = "{user}";
 
+            async function fetchAndRenderCounts() {
+                try {
+                    console.log('Fetching counts for deck:', deckId, 'user:', username);
+                    const response = await fetch('/api/study/counts', {{
+                        method: 'POST',
+                        headers: {{ 'Content-Type': 'application/json' }},
+                        body: JSON.stringify({{ deck_id: deckId, username }})
+                    }});
+                    if (!response.ok) {
+                        console.log('Failed to fetch counts:', response.status, response.statusText);
+                        return;
+                    }
+                    const data = await response.json();
+                    console.log('Received counts data:', data);
+                    if (typeof data.new === 'number') {
+                        document.getElementById('count-new').textContent = data.new;
+                        console.log('Updated new count:', data.new);
+                    }
+                    if (typeof data.learning === 'number') {
+                        document.getElementById('count-learn').textContent = data.learning;
+                        console.log('Updated learning count:', data.learning);
+                    }
+                    if (typeof data.review === 'number') {
+                        document.getElementById('count-review').textContent = data.review;
+                        console.log('Updated review count:', data.review);
+                    }
+                    if (typeof data.total === 'number') {
+                        document.getElementById('count-total').textContent = data.total;
+                        console.log('Updated total count:', data.total);
+                    }
+                } catch (e) {
+                    console.error('Error fetching counts:', e);
+                }
+            }
+
             async function startSession() {{
                 try {{
                     const data = await makeStudyRequest('/api/study/start', {{
@@ -384,6 +425,9 @@ async def study_interface(request: Request, user: str, deck_id: int, deck_name: 
                     document.getElementById('session-stats').textContent = 'Front side shown';
                     document.getElementById('card-counter').innerHTML = `Cards: <span class="stat-value">${{cardCount}}</span>`;
 
+                    // Fetch current counts for the selected deck
+                    fetchAndRenderCounts();
+
                 }} catch (error) {{
                     alert('Error starting session: ' + error.message);
                 }}
@@ -403,6 +447,66 @@ async def study_interface(request: Request, user: str, deck_id: int, deck_name: 
                     document.getElementById('flip-btn').style.display = 'none';
                     document.getElementById('ease-buttons').style.display = 'flex';
                     document.getElementById('session-stats').textContent = 'Choose difficulty';
+
+                    // Annotate ease buttons with next interval labels if provided
+                    console.log('Card flip data:', data);
+                    console.log('Card type:', typeof data);
+                    console.log('Card keys:', Object.keys(data));
+
+                    // Check if ease_options is in the main data object
+                    let easeOptions = null;
+                    if (data && data.ease_options) {
+                        easeOptions = data.ease_options;
+                    }
+
+                    if (easeOptions) {
+                        console.log('Ease options found:', easeOptions);
+                        const again = easeOptions['1'] || '';
+                        const hard = easeOptions['2'] || '';
+                        const good = easeOptions['3'] || '';
+                        const easy = easeOptions['4'] || '';
+                        console.log('Parsed intervals - Again:', again, 'Hard:', hard, 'Good:', good, 'Easy:', easy);
+
+                        console.log('Finding buttons...');
+                        const btnAgain = document.querySelector('.ease-btn.again');
+                        const btnHard = document.querySelector('.ease-btn.hard');
+                        const btnGood = document.querySelector('.ease-btn.good');
+                        const btnEasy = document.querySelector('.ease-btn.easy');
+
+                        console.log('Buttons found:', {
+                            btnAgain: !!btnAgain,
+                            btnHard: !!btnHard,
+                            btnGood: !!btnGood,
+                            btnEasy: !!btnEasy
+                        });
+
+                        if (btnAgain) {
+                            const newText = again ? `Again (${{again}})` : 'Again';
+                            btnAgain.textContent = newText;
+                            console.log('Updated Again button text to:', newText);
+                            console.log('Button actual textContent after update:', btnAgain.textContent);
+                        }
+                        if (btnHard) {
+                            const newText = hard ? `Hard (${{hard}})` : 'Hard';
+                            btnHard.textContent = newText;
+                            console.log('Updated Hard button text to:', newText);
+                            console.log('Button actual textContent after update:', btnHard.textContent);
+                        }
+                        if (btnGood) {
+                            const newText = good ? `Good (${{good}})` : 'Good';
+                            btnGood.textContent = newText;
+                            console.log('Updated Good button text to:', newText);
+                            console.log('Button actual textContent after update:', btnGood.textContent);
+                        }
+                        if (btnEasy) {
+                            const newText = easy ? `Easy (${{easy}})` : 'Easy';
+                            btnEasy.textContent = newText;
+                            console.log('Updated Easy button text to:', newText);
+                            console.log('Button actual textContent after update:', btnEasy.textContent);
+                        }
+                    } else {
+                        console.log('No ease_options found in response data');
+                    }
 
                 }} catch (error) {{
                     alert('Error flipping card: ' + error.message);
@@ -432,6 +536,8 @@ async def study_interface(request: Request, user: str, deck_id: int, deck_name: 
 
                     document.getElementById('flip-btn').style.display = 'inline-block';
                     document.getElementById('ease-buttons').style.display = 'none';
+                    // Refresh counts after answering
+                    fetchAndRenderCounts();
                     document.getElementById('session-stats').textContent = 'Front side shown';
                     document.getElementById('card-counter').innerHTML = `Cards: <span class="stat-value">${{cardCount}}</span>`;
 
@@ -561,6 +667,19 @@ async def study_start(request: Request):
             deck_id=data["deck_id"],
             action="start",
             username=data["username"]
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/study/counts")
+async def study_counts(request: Request):
+    """Return counts for the selected deck (new/learn/review/total)."""
+    try:
+        data = await request.json()
+        result, status_code = study_ops.get_study_counts(
+            username=data["username"],
+            deck_id=data["deck_id"],
         )
         return result
     except Exception as e:

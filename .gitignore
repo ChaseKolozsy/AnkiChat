@@ -24,6 +24,8 @@ MANIFEST
 venv/
 env/
 .venv/
+venv_claude_sdk/
+.venv_claude_sdk/
 ENV/
 
 # IDE
