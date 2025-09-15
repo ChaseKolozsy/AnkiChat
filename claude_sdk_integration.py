@@ -108,9 +108,9 @@ class VocabularyQueueManager:
         cid = int(cid)
         if cid in self.in_progress_ids:
             self.in_progress_ids.remove(cid)
-            # Mark it as seen and put back on top if not already queued
+            # Mark it as seen and put back at the BOTTOM so newest stays on top
             if not any((self._extract_card_id(c) == cid) for c in self.queue):
-                self.queue.appendleft(card)
+                self.queue.append(card)
             return True
         return False
 
