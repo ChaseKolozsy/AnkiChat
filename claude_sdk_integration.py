@@ -48,22 +48,41 @@ class VocabularyQueueManager:
         self.card_answer_mapping: Dict[int, int] = {}  # card_id -> answer
         self.processed_cards: List[Dict[str, Any]] = []
         self.seen_card_ids: set[int] = set()  # Track seen IDs to avoid treating existing cards as new
+        self.in_progress_ids: set[int] = set()  # Cards currently shown but not yet answered
 
     def add_new_card(self, card_data: Dict[str, Any]):
         """Add new card to front of queue (LIFO)"""
+        cid = self._extract_card_id(card_data)
+        if cid is None:
+            return
+        cid = int(cid)
+        # Avoid duplicates or replacing an in-progress card
+        if cid in self.in_progress_ids:
+            return
+        if any((self._extract_card_id(c) == cid) for c in self.queue):
+            return
         self.queue.appendleft(card_data)
-        logger.info(f"Added new vocabulary card {card_data.get('card_id', 'unknown')} to front of queue")
+        logger.info(f"Added new vocabulary card {cid} to front of queue")
 
     def get_next_card(self) -> Optional[Dict[str, Any]]:
         """Get next card from front of queue"""
         if self.queue:
-            return self.queue.popleft()
+            card = self.queue.popleft()
+            cid = self._extract_card_id(card)
+            if cid is not None:
+                self.in_progress_ids.add(int(cid))
+            return card
         return None
 
     def cache_answer(self, card_id: int, answer: int):
         """Cache user answer for auto-session"""
         self.card_answer_mapping[card_id] = answer
         logger.info(f"Cached answer {answer} for card {card_id}")
+        # Mark in-progress card as completed when user answers
+        try:
+            self.in_progress_ids.discard(int(card_id))
+        except Exception:
+            pass
 
     def get_cached_answer(self, card_id: int) -> Optional[int]:
         """Get cached answer for card"""
@@ -196,6 +215,7 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
                     self.vocabulary_queue.queue.clear()
                     self.vocabulary_queue.card_answer_mapping.clear()
                     self.vocabulary_queue.seen_card_ids.clear()
+                    self.vocabulary_queue.in_progress_ids.clear()
                     self.vocab_initialized = False
                 except Exception:
                     pass
@@ -540,12 +560,13 @@ Használd a define-with-context parancs pontos utasításait és hozz létre min
 
     def get_vocabulary_queue_status(self) -> Dict[str, Any]:
         """Get current vocabulary queue status"""
-        queue_length = len(self.vocabulary_queue.queue)
+        queue_length = len(self.vocabulary_queue.queue) + len(self.vocabulary_queue.in_progress_ids)
         logger.debug(f"Vocabulary queue status: queue_length={queue_length}, queue contents: {[card.get('card_id', card.get('id', 'unknown')) for card in self.vocabulary_queue.queue]}")
         return {
             'queue_length': queue_length,
             'cached_answers': len(self.vocabulary_queue.card_answer_mapping),
-            'processed_cards': len(self.vocabulary_queue.processed_cards)
+            'processed_cards': len(self.vocabulary_queue.processed_cards),
+            'in_progress': len(self.vocabulary_queue.in_progress_ids)
         }
 
     def get_next_vocabulary_card(self) -> Optional[Dict[str, Any]]:
