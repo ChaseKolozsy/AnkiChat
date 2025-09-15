@@ -360,12 +360,29 @@ async def home(request: Request):
 
         <!-- User Setup -->
         <div class="card">
-            <h2>Setup</h2>
+            <h2>Setup & Login</h2>
             <div class="form-group">
-                <label for="username">Username:</label>
-                <input type="text" id="username" placeholder="Enter your Anki username">
+                <label for="profile-name">Profile Name:</label>
+                <input type="text" id="profile-name" placeholder="Enter profile name (e.g. chase)" value="chase">
             </div>
-            <button class="btn" onclick="loadDecks()">Load Decks</button>
+            <div class="form-group">
+                <label for="username">AnkiWeb Username:</label>
+                <input type="text" id="username" placeholder="Enter your AnkiWeb username">
+            </div>
+            <div class="form-group">
+                <label for="password">AnkiWeb Password:</label>
+                <input type="password" id="password" placeholder="Enter your AnkiWeb password">
+            </div>
+            <div class="form-group">
+                <label for="endpoint">Endpoint (optional):</label>
+                <input type="text" id="endpoint" placeholder="Leave blank for default">
+            </div>
+            <div style="margin-bottom: 15px;">
+                <input type="checkbox" id="upload-checkbox">
+                <label for="upload-checkbox">Upload changes to AnkiWeb</label>
+            </div>
+            <button class="btn" onclick="loginAndLoadDecks()" id="load-decks-btn">Login & Load Decks</button>
+            <div id="login-status" style="margin-top: 10px; font-size: 14px;"></div>
         </div>
 
         <!-- Deck Selection -->
@@ -496,20 +513,80 @@ async def home(request: Request):
         let cachedGrammarAnswer = null;  // Store cached answer for later submission
         let cachedCounts = { new: 0, learning: 0, review: 0, total: 0 };  // Cache counts to avoid collection conflicts
 
-        // Deck loading functions (similar to original)
-        async function loadDecks() {
+        // Login and deck loading functions following db_ops.py protocol
+        async function loginAndLoadDecks() {
+            const profileName = document.getElementById('profile-name').value.trim();
             const username = document.getElementById('username').value.trim();
-            if (!username) {
-                alert('Please enter a username');
+            const password = document.getElementById('password').value.trim();
+            const endpoint = document.getElementById('endpoint').value.trim();
+            const upload = document.getElementById('upload-checkbox').checked;
+
+            if (!profileName || !username || !password) {
+                alert('Please enter profile name, username, and password');
                 return;
             }
-            currentUser = username;
+
+            const loadButton = document.getElementById('load-decks-btn');
+            const statusDiv = document.getElementById('login-status');
+
+            // Update UI to show loading
+            loadButton.disabled = true;
+            loadButton.textContent = 'Logging in...';
+            statusDiv.innerHTML = '<span style="color: #0084ff;">🔄 Performing AnkiWeb login and sync...</span>';
+
+            try {
+                // Step 1: Login and sync following db_ops.py protocol
+                const loginResponse = await fetch('/api/login-and-sync', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        profile_name: profileName,
+                        username: username,
+                        password: password,
+                        endpoint: endpoint || null,
+                        upload: upload
+                    })
+                });
+
+                const loginResult = await loginResponse.json();
+
+                if (!loginResponse.ok || !loginResult.success) {
+                    throw new Error(loginResult.error || loginResult.details || 'Login failed');
+                }
+
+                statusDiv.innerHTML = '<span style="color: #28a745;">✅ Login and sync successful!</span>';
+                console.log('Login result:', loginResult);
+
+                // Step 2: Load decks using the profile name
+                currentUser = profileName; // Use profile name for deck operations
+                await loadDecks();
+
+            } catch (error) {
+                console.error('Error during login and sync:', error);
+                statusDiv.innerHTML = `<span style="color: #dc3545;">❌ Error: ${error.message}</span>`;
+                alert('Login failed: ' + error.message);
+            } finally {
+                // Reset button state
+                loadButton.disabled = false;
+                loadButton.textContent = 'Login & Load Decks';
+            }
+        }
+
+        // Deck loading function (now called after successful login)
+        async function loadDecks() {
+            if (!currentUser) {
+                alert('Please login first');
+                return;
+            }
+
+            const statusDiv = document.getElementById('login-status');
+            statusDiv.innerHTML = '<span style="color: #0084ff;">🔄 Loading decks...</span>';
 
             try {
                 const response = await fetch('/api/decks', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username })
+                    body: JSON.stringify({ username: currentUser })
                 });
 
                 if (!response.ok) {
@@ -530,9 +607,11 @@ async def home(request: Request):
                     decks = [];
                 }
 
-                displayDecks(decks);
+                await displayDecks(decks);
+                statusDiv.innerHTML = '<span style="color: #28a745;">✅ Ready to study!</span>';
             } catch (error) {
                 console.error('Error loading decks:', error);
+                statusDiv.innerHTML = `<span style="color: #dc3545;">❌ Error loading decks: ${error.message}</span>`;
                 alert('Error loading decks: ' + error.message);
             }
         }
@@ -1800,6 +1879,83 @@ async def get_study_counts_endpoint(request: Request):
         result, status_code = study_ops.get_study_counts(username=username, deck_id=deck_id)
 
         return JSONResponse(result, status_code=status_code)
+
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/api/login-and-sync")
+async def login_and_sync_endpoint(request: Request):
+    """Login and sync following db_ops.py protocol"""
+    try:
+        data = await request.json()
+        profile_name = data.get("profile_name")
+        username = data.get("username")
+        password = data.get("password")
+        endpoint = data.get("endpoint")
+        upload = data.get("upload", False)
+
+        if not all([profile_name, username, password]):
+            return JSONResponse({"error": "profile_name, username, and password are required"}, status_code=400)
+
+        # Follow the same protocol as db_ops.py
+        from AnkiClient.src.operations import user_ops, db_ops
+
+        # Sanitize endpoint like in db_ops.py
+        endpoint_arg = endpoint or None
+        if endpoint_arg and (
+            '/api/' in endpoint_arg or
+            'localhost:5001' in endpoint_arg or
+            '127.0.0.1:5001' in endpoint_arg or
+            endpoint_arg.startswith('http://172.17.')
+        ):
+            endpoint_arg = None
+
+        # Perform login
+        login_result = user_ops.sync_user_login(
+            profile_name=profile_name,
+            username=username,
+            password=password,
+            endpoint=endpoint_arg,
+            upload=upload,
+            sync_media=False,
+        )
+
+        if not isinstance(login_result, dict):
+            return JSONResponse({"error": "Login failed", "details": str(login_result)}, status_code=500)
+
+        if 'error' in login_result:
+            return JSONResponse({"error": "Login failed", "details": login_result['error']}, status_code=500)
+
+        # Get hkey and endpoint from login
+        hkey = login_result.get('hkey')
+        endpoint_from_login = login_result.get('endpoint')
+
+        # If login handled a full sync, skip separate DB sync
+        if login_result.get('full_sync'):
+            return JSONResponse({
+                "success": True,
+                "login_result": login_result,
+                "full_sync_handled": True,
+                "message": "Full sync handled during login"
+            })
+        else:
+            # Proceed with DB sync
+            endpoint_for_sync = endpoint_from_login or endpoint_arg
+            try:
+                sync_result = db_ops.sync_db(profile_name, hkey, endpoint_for_sync, upload=upload)
+                return JSONResponse({
+                    "success": True,
+                    "login_result": login_result,
+                    "sync_result": sync_result,
+                    "message": "Login and sync completed successfully"
+                })
+            except Exception as sync_error:
+                return JSONResponse({
+                    "success": True,  # Login succeeded
+                    "login_result": login_result,
+                    "sync_error": str(sync_error),
+                    "message": "Login succeeded but sync failed"
+                })
 
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
