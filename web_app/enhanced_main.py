@@ -1730,6 +1730,26 @@ async def close_all_sessions(request: Request):
     except Exception as e:
         return JSONResponse({"success": False, "error": str(e)})
 
+@app.post("/api/study/counts")
+async def get_study_counts_endpoint(request: Request):
+    """Get study counts for a specific deck"""
+    try:
+        data = await request.json()
+        username = data.get("username")
+        deck_id = data.get("deck_id")
+
+        if not username or deck_id is None:
+            return JSONResponse({"error": "username and deck_id are required"}, status_code=400)
+
+        # Use the study_ops function to get counts
+        from AnkiClient.src.operations import study_ops
+        result, status_code = study_ops.get_study_counts(username=username, deck_id=deck_id)
+
+        return JSONResponse(result, status_code=status_code)
+
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
 # Keep existing API endpoints for compatibility
 @app.post("/api/decks")
 async def get_decks(request: Request):
