@@ -158,6 +158,27 @@ async def home(request: Request):
         .status-paused { background: #ffc107; color: black; }
         .status-waiting { background: #6c757d; color: white; }
 
+        /* Stats Bar Styles */
+        .stats-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding: 10px 15px;
+            background: #2a2a2a;
+            border-radius: 8px;
+            border: 1px solid #404040;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .stat-item {
+            color: #b8b8b8;
+        }
+        .stat-value {
+            color: #4a9eff;
+            font-weight: 600;
+        }
+
         /* Card Display */
         .card-display {
             background: #1a1a1a;
@@ -360,6 +381,17 @@ async def home(request: Request):
             <div class="session-column">
                 <div class="card grammar-session">
                     <h2>📚 Grammar Session <span class="session-status status-active" id="grammar-status">Active</span></h2>
+
+                    <div class="stats-bar">
+                        <span class="stat-item">Status: <span class="stat-value" id="session-stats">Ready to start</span></span>
+                        <span class="stat-item" id="counts">
+                            New: <span class="stat-value" id="count-new">0</span>
+                             • Learn: <span class="stat-value" id="count-learn">0</span>
+                             • Review: <span class="stat-value" id="count-review">0</span>
+                             • Total: <span class="stat-value" id="count-total">0</span>
+                        </span>
+                        <span class="stat-item" id="card-counter">Cards: <span class="stat-value">0</span></span>
+                    </div>
 
                     <div id="grammar-card-display" class="card-display">
                         <!-- Grammar card content will be displayed here -->
@@ -572,6 +604,9 @@ async def home(request: Request):
                     // Start vocabulary polling
                     startVocabularyPolling();
 
+                    // Fetch current counts for the selected deck
+                    fetchAndRenderCounts();
+
                     updateSessionStatus('grammar-status', 'Active', 'status-active');
                     updateSessionStatus('vocab-status', 'Polling', 'status-waiting');
 
@@ -693,6 +728,41 @@ async def home(request: Request):
             }
         }
 
+        async function fetchAndRenderCounts() {
+            try {
+                console.log('Fetching counts for deck:', currentDeckId, 'user:', currentUser);
+                const response = await fetch('/api/study/counts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ deck_id: currentDeckId, username: currentUser })
+                });
+                if (!response.ok) {
+                    console.log('Failed to fetch counts:', response.status, response.statusText);
+                    return;
+                }
+                const data = await response.json();
+                console.log('Received counts data:', data);
+                if (typeof data.new === 'number') {
+                    document.getElementById('count-new').textContent = data.new;
+                    console.log('Updated new count:', data.new);
+                }
+                if (typeof data.learning === 'number') {
+                    document.getElementById('count-learn').textContent = data.learning;
+                    console.log('Updated learning count:', data.learning);
+                }
+                if (typeof data.review === 'number') {
+                    document.getElementById('count-review').textContent = data.review;
+                    console.log('Updated review count:', data.review);
+                }
+                if (typeof data.total === 'number') {
+                    document.getElementById('count-total').textContent = data.total;
+                    console.log('Updated total count:', data.total);
+                }
+            } catch (e) {
+                console.error('Error fetching counts:', e);
+            }
+        }
+
         async function flipCard() {
             const flipButton = document.getElementById('flip-button');
 
@@ -733,6 +803,66 @@ async def home(request: Request):
                     const answerButtons = document.getElementById('grammar-answers');
                     if (answerButtons) {
                         answerButtons.classList.remove('hidden');
+                    }
+
+                    // Annotate ease buttons with next interval labels if provided
+                    console.log('Card flip data:', result.current_card);
+                    console.log('Card type:', typeof result.current_card);
+                    console.log('Card keys:', Object.keys(result.current_card || {}));
+
+                    // Check if ease_options is in the main data object
+                    let easeOptions = null;
+                    if (result.current_card && result.current_card.ease_options) {
+                        easeOptions = result.current_card.ease_options;
+                    }
+
+                    if (easeOptions) {
+                        console.log('Ease options found:', easeOptions);
+                        const again = easeOptions['1'] || '';
+                        const hard = easeOptions['2'] || '';
+                        const good = easeOptions['3'] || '';
+                        const easy = easeOptions['4'] || '';
+                        console.log('Parsed intervals - Again:', again, 'Hard:', hard, 'Good:', good, 'Easy:', easy);
+
+                        console.log('Finding buttons...');
+                        const btnAgain = document.querySelector('.btn-again');
+                        const btnHard = document.querySelector('.btn-hard');
+                        const btnGood = document.querySelector('.btn-good');
+                        const btnEasy = document.querySelector('.btn-easy');
+
+                        console.log('Buttons found:', {
+                            btnAgain: !!btnAgain,
+                            btnHard: !!btnHard,
+                            btnGood: !!btnGood,
+                            btnEasy: !!btnEasy
+                        });
+
+                        if (btnAgain) {
+                            const newText = again ? `1 - Again (${again})` : '1 - Again';
+                            btnAgain.textContent = newText;
+                            console.log('Updated Again button text to:', newText);
+                            console.log('Button actual textContent after update:', btnAgain.textContent);
+                        }
+                        if (btnHard) {
+                            const newText = hard ? `2 - Hard (${hard})` : '2 - Hard';
+                            btnHard.textContent = newText;
+                            console.log('Updated Hard button text to:', newText);
+                            console.log('Button actual textContent after update:', btnHard.textContent);
+                        }
+                        if (btnGood) {
+                            const newText = good ? `3 - Good (${good})` : '3 - Good';
+                            btnGood.textContent = newText;
+                            console.log('Updated Good button text to:', newText);
+                            console.log('Button actual textContent after update:', btnGood.textContent);
+                        }
+                        if (btnEasy) {
+                            const newText = easy ? `4 - Easy (${easy})` : '4 - Easy';
+                            btnEasy.textContent = newText;
+                            console.log('Updated Easy button text to:', newText);
+                            console.log('Button actual textContent after update:', btnEasy.textContent);
+                        }
+                    } else {
+                        console.log('No ease_options found in response data');
                     }
                 } else {
                     alert('Error flipping card: ' + (result.error || 'Unknown error'));
@@ -914,6 +1044,8 @@ async def home(request: Request):
                         if (result.next_card) {
                             grammarSession.currentCard = result.next_card;
                             displayGrammarCard(result.next_card);
+                            // Refresh counts after answering
+                            fetchAndRenderCounts();
                         }
                     }
                 } else {
