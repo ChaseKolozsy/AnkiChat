@@ -382,6 +382,7 @@ async def home(request: Request):
                 <label for="upload-checkbox">Upload changes to AnkiWeb</label>
             </div>
             <button class="btn" onclick="loginAndLoadDecks()" id="load-decks-btn">Login & Load Decks</button>
+            <button class="btn" onclick="syncOnDemand()" id="sync-btn" style="display: none; background: #28a745;">🔄 Sync Now</button>
             <div id="login-status" style="margin-top: 10px; font-size: 14px;"></div>
         </div>
 
@@ -513,6 +514,55 @@ async def home(request: Request):
         let cachedGrammarAnswer = null;  // Store cached answer for later submission
         let cachedCounts = { new: 0, learning: 0, review: 0, total: 0 };  // Cache counts to avoid collection conflicts
 
+        // Cached credentials for on-demand sync (simple XOR encryption for basic obfuscation)
+        let cachedCredentials = null;
+        const encryptionKey = "AnkiChatWebSync2024"; // Simple key for XOR
+
+        // Simple XOR encryption/decryption for credential caching
+        function simpleEncrypt(text) {
+            let result = '';
+            for (let i = 0; i < text.length; i++) {
+                result += String.fromCharCode(text.charCodeAt(i) ^ encryptionKey.charCodeAt(i % encryptionKey.length));
+            }
+            return btoa(result); // Base64 encode
+        }
+
+        function simpleDecrypt(encrypted) {
+            try {
+                const decoded = atob(encrypted); // Base64 decode
+                let result = '';
+                for (let i = 0; i < decoded.length; i++) {
+                    result += String.fromCharCode(decoded.charCodeAt(i) ^ encryptionKey.charCodeAt(i % encryptionKey.length));
+                }
+                return result;
+            } catch (e) {
+                console.error('Decryption failed:', e);
+                return null;
+            }
+        }
+
+        function cacheCredentials(profileName, username, password, endpoint, upload) {
+            cachedCredentials = {
+                profileName: profileName,
+                username: username,
+                password: simpleEncrypt(password), // Encrypt password
+                endpoint: endpoint,
+                upload: upload
+            };
+            console.log('Credentials cached for future sync operations');
+        }
+
+        function getCachedCredentials() {
+            if (!cachedCredentials) return null;
+            return {
+                profileName: cachedCredentials.profileName,
+                username: cachedCredentials.username,
+                password: simpleDecrypt(cachedCredentials.password), // Decrypt password
+                endpoint: cachedCredentials.endpoint,
+                upload: cachedCredentials.upload
+            };
+        }
+
         // Login and deck loading functions following db_ops.py protocol
         async function loginAndLoadDecks() {
             const profileName = document.getElementById('profile-name').value.trim();
@@ -556,6 +606,12 @@ async def home(request: Request):
 
                 statusDiv.innerHTML = '<span style="color: #28a745;">✅ Login and sync successful!</span>';
                 console.log('Login result:', loginResult);
+
+                // Cache credentials for future sync operations
+                cacheCredentials(profileName, username, password, endpoint, upload);
+
+                // Show sync button now that credentials are cached
+                document.getElementById('sync-btn').style.display = 'inline-block';
 
                 // Step 2: Load decks using the profile name
                 currentUser = profileName; // Use profile name for deck operations
@@ -613,6 +669,64 @@ async def home(request: Request):
                 console.error('Error loading decks:', error);
                 statusDiv.innerHTML = `<span style="color: #dc3545;">❌ Error loading decks: ${error.message}</span>`;
                 alert('Error loading decks: ' + error.message);
+            }
+        }
+
+        // On-demand sync function using cached credentials
+        async function syncOnDemand() {
+            const credentials = getCachedCredentials();
+            if (!credentials) {
+                alert('No cached credentials available. Please login first.');
+                return;
+            }
+
+            const syncButton = document.getElementById('sync-btn');
+            const statusDiv = document.getElementById('login-status');
+
+            // Update UI to show syncing
+            syncButton.disabled = true;
+            syncButton.textContent = '🔄 Syncing...';
+            statusDiv.innerHTML = '<span style="color: #0084ff;">🔄 Performing on-demand sync...</span>';
+
+            try {
+                // Use cached credentials for sync
+                const syncResponse = await fetch('/api/login-and-sync', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        profile_name: credentials.profileName,
+                        username: credentials.username,
+                        password: credentials.password,
+                        endpoint: credentials.endpoint || null,
+                        upload: credentials.upload
+                    })
+                });
+
+                const syncResult = await syncResponse.json();
+
+                if (!syncResponse.ok || !syncResult.success) {
+                    throw new Error(syncResult.error || syncResult.details || 'Sync failed');
+                }
+
+                statusDiv.innerHTML = '<span style="color: #28a745;">✅ Sync completed successfully!</span>';
+                console.log('On-demand sync result:', syncResult);
+
+                // Refresh deck list and counts after sync
+                await loadDecks();
+
+                // Auto-clear status after 3 seconds
+                setTimeout(() => {
+                    statusDiv.innerHTML = '<span style="color: #28a745;">✅ Ready to study!</span>';
+                }, 3000);
+
+            } catch (error) {
+                console.error('Error during on-demand sync:', error);
+                statusDiv.innerHTML = `<span style="color: #dc3545;">❌ Sync error: ${error.message}</span>`;
+                alert('Sync failed: ' + error.message);
+            } finally {
+                // Reset button state
+                syncButton.disabled = false;
+                syncButton.textContent = '🔄 Sync Now';
             }
         }
 
