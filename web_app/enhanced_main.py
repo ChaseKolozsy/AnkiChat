@@ -536,13 +536,14 @@ async def home(request: Request):
             }
         }
 
-        function displayDecks(decks) {
+        async function displayDecks(decks) {
             const deckList = document.getElementById('deck-list');
             const deckSelection = document.getElementById('deck-selection');
 
             if (!decks || decks.length === 0) {
                 deckList.innerHTML = '<p>No decks found for this user.</p>';
             } else {
+                // First display decks with loading indicators
                 deckList.innerHTML = decks.map(deck => `
                     <div class="deck-item" onclick="selectDeck(${deck.id}, '${deck.name}')"
                          style="background: #404040; border-radius: 8px; padding: 15px; margin-bottom: 10px; cursor: pointer; transition: all 0.2s;">
@@ -550,14 +551,55 @@ async def home(request: Request):
                         <div style="font-size: 14px; opacity: 0.7; margin-top: 5px;">
                             ID: ${deck.id}
                         </div>
+                        <div id="counts-${deck.id}" style="font-size: 12px; margin-top: 8px; color: #4a9eff;">
+                            Loading counts...
+                        </div>
                     </div>
                 `).join('');
+
+                // Fetch counts for each deck
+                fetchDeckCounts(decks);
             }
 
             deckSelection.classList.remove('hidden');
 
             // Start vocabulary polling automatically when user loads decks
             startVocabularyPolling();
+        }
+
+        async function fetchDeckCounts(decks) {
+            for (const deck of decks) {
+                try {
+                    const response = await fetch('/api/study/counts', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ deck_id: deck.id, username: currentUser })
+                    });
+
+                    if (response.ok) {
+                        const counts = await response.json();
+                        const countsElement = document.getElementById(`counts-${deck.id}`);
+                        if (countsElement) {
+                            countsElement.innerHTML = `
+                                <span style="color: #28a745;">New: ${counts.new}</span> •
+                                <span style="color: #ffc107;">Learning: ${counts.learning}</span> •
+                                <span style="color: #17a2b8;">Review: ${counts.review}</span> •
+                                <span style="color: #6c757d;">Total: ${counts.total}</span>
+                            `;
+                        }
+                    } else {
+                        const countsElement = document.getElementById(`counts-${deck.id}`);
+                        if (countsElement) {
+                            countsElement.innerHTML = '<span style="color: #dc3545;">Failed to load counts</span>';
+                        }
+                    }
+                } catch (error) {
+                    const countsElement = document.getElementById(`counts-${deck.id}`);
+                    if (countsElement) {
+                        countsElement.innerHTML = '<span style="color: #dc3545;">Error loading counts</span>';
+                    }
+                }
+            }
         }
 
         function selectDeck(deckId, deckName) {
