@@ -100,6 +100,20 @@ class VocabularyQueueManager:
                 self.seen_card_ids.add(int(cid))
         logger.info(f"Seeded {len(self.seen_card_ids)} existing vocabulary cards as seen")
 
+    def requeue_in_progress(self, card: Dict[str, Any]) -> bool:
+        """Move an in-progress card back to the top of the queue (LIFO)."""
+        cid = self._extract_card_id(card)
+        if cid is None:
+            return False
+        cid = int(cid)
+        if cid in self.in_progress_ids:
+            self.in_progress_ids.remove(cid)
+            # Mark it as seen and put back on top if not already queued
+            if not any((self._extract_card_id(c) == cid) for c in self.queue):
+                self.queue.appendleft(card)
+            return True
+        return False
+
 
 class ClaudeSDKIntegration:
     """Main Claude Code SDK integration class"""
@@ -595,6 +609,11 @@ Használd a define-with-context parancs pontos utasításait és hozz létre min
     def cache_vocabulary_answer(self, card_id: int, answer: int):
         """Cache vocabulary card answer"""
         self.vocabulary_queue.cache_answer(card_id, answer)
+
+    def requeue_current_vocabulary_card(self, card: Dict[str, Any]) -> Dict[str, Any]:
+        """Requeue the currently displayed vocabulary card to the top of the LIFO queue."""
+        ok = self.vocabulary_queue.requeue_in_progress(card)
+        return {"success": ok}
 
     async def submit_vocabulary_session(self) -> Dict[str, Any]:
         """Submit vocabulary session and start auto-answer session"""

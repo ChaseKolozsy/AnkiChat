@@ -1014,6 +1014,7 @@ async def home(request: Request):
         function startVocabularyPolling() {
             if (pollingInterval) return;
 
+            let lastQueueLength = 0;
             pollingInterval = setInterval(async () => {
                 try {
                     const response = await fetch('/api/vocabulary-queue-status', {
@@ -1031,14 +1032,30 @@ async def home(request: Request):
                             document.getElementById('study-interface').classList.remove('hidden');
                         }
 
-                        // If new cards available, get and display one
                         const vocabDisplayHidden = document.getElementById('vocabulary-card-display').classList.contains('hidden');
+                        // If nothing is displayed, show the next card
                         if (result.queue_status.queue_length > 0 && (!vocabularySession.currentCard || vocabDisplayHidden)) {
                             const nextCard = await getNextVocabularyCard();
-                            if (nextCard) {
-                                displayVocabularyCard(nextCard);
+                            if (nextCard) displayVocabularyCard(nextCard);
+                        }
+
+                        // If new cards arrived while a card is displayed, requeue current and show newest (LIFO)
+        		const prioritizeNewest = true;
+                        if (prioritizeNewest && vocabularySession.currentCard) {
+                            const inProgress = result.queue_status.in_progress || 0;
+                            if (result.queue_status.queue_length > inProgress && result.queue_status.queue_length > lastQueueLength) {
+                                try {
+                                    await fetch('/api/requeue-current-vocabulary-card', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ username: currentUser, card: vocabularySession.currentCard })
+                                    });
+                                } catch (e) {}
+                                const nextCard = await getNextVocabularyCard();
+                                if (nextCard) displayVocabularyCard(nextCard);
                             }
                         }
+                        lastQueueLength = result.queue_status.queue_length;
                     }
                 } catch (error) {
                     console.error('Error polling vocabulary queue:', error);
@@ -1485,6 +1502,26 @@ async def next_vocabulary_card(request: Request):
         card = claude_integration.get_next_vocabulary_card()
 
         return JSONResponse({"success": True, "card": card})
+
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)})
+
+@app.post("/api/requeue-current-vocabulary-card")
+async def requeue_current_vocabulary_card(request: Request):
+    """Requeue the currently displayed vocabulary card to the top of the LIFO queue."""
+    global claude_integration
+
+    try:
+        if not claude_integration:
+            return JSONResponse({"success": False, "error": "Claude integration not available"})
+
+        data = await request.json()
+        card = data.get("card")
+        if not isinstance(card, dict):
+            return JSONResponse({"success": False, "error": "Invalid card payload"})
+
+        result = claude_integration.requeue_current_vocabulary_card(card)
+        return JSONResponse(result)
 
     except Exception as e:
         return JSONResponse({"success": False, "error": str(e)})
