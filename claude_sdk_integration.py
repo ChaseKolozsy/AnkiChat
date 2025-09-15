@@ -149,13 +149,16 @@ class ClaudeSDKIntegration:
             self.claude_sdk_available = False
 
     async def _get_context_instructions(self) -> str:
-        """Load context instructions from define-with-context command with card template"""
+        """Load full define-with-context instructions and augment with explicit parallel/subagent + card template rules"""
         try:
             with open('/home/chase/AnkiChat/.claude/commands/define-with-context.md', 'r') as f:
                 content = f.read()
 
-            # Extract the relevant instruction sections and add card template
-            instructions = """
+            # Append explicit directives we require for this integration
+            instructions = content + """
+
+ADDITIONAL SYSTEM DIRECTIVES (ENFORCED):
+
 CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
 
 1. **CONTEXT SOURCE IDENTIFICATION**:
@@ -178,7 +181,7 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
    Call mcp__anki-api__create_card with:
    - username: "chase"
    - note_type: "Hungarian Vocabulary Note"
-   - deck_id: 1756509006667
+   - deck_id: 1
    - fields: {
        "Word": "[THE_HUNGARIAN_WORD_ONLY]",
        "Definition": "[YOUR_CREATIVE_DEFINITION_WITH_HTML_BR_TAGS]",
@@ -199,6 +202,12 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
    - Follow Role 2 creative definition principles from the instructions
    - Use the provided deck_id and note_type exactly as specified
    - Do not attempt to discover or query for card templates
+
+6. **PARALLEL SUBAGENTS REQUIRED**:
+   - Spawn a dedicated subagent for EACH word to define the word in parallel.
+   - Each subagent must produce a rich, multi-approach Hungarian definition (3–5 variants), mixing emojis, symbols, and minimal math where appropriate.
+   - Subagents must independently call mcp__anki-api__create_card for their word when ready.
+   - Do not serialize; run subagents concurrently so all words are processed quickly.
 """
             return instructions
         except FileNotFoundError:
@@ -359,27 +368,45 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
             return {'success': False, 'error': str(e)}
 
     def _prepare_card_context(self, card_data: Dict[str, Any]) -> str:
-        """Prepare card context for Claude SDK"""
-        fields = card_data.get('fields', {})
+        """Prepare rich card context for Claude SDK from either front/back or fields structures"""
+        context_lines: List[str] = ["KÁRTYA KONTEXTUSA (Card Context):"]
 
-        context = "KÁRTYA KONTEXTUSA (Card Context):\n"
-        context += f"Szó: {fields.get('Word', 'N/A')}\n"
-        context += f"Definíció: {fields.get('Definition', 'N/A')}\n"
+        try:
+            if isinstance(card_data, dict):
+                # Newer API: separate front/back dicts
+                if 'front' in card_data or 'back' in card_data:
+                    if card_data.get('front'):
+                        context_lines.append("FRONT:")
+                        for k, v in card_data['front'].items():
+                            if isinstance(v, str) and v.strip():
+                                context_lines.append(f"- {k}: {v}")
+                    if card_data.get('back'):
+                        context_lines.append("BACK:")
+                        for k, v in card_data['back'].items():
+                            if isinstance(v, str) and v.strip():
+                                context_lines.append(f"- {k}: {v}")
+                # Legacy: fields dict
+                elif 'fields' in card_data:
+                    fields = card_data.get('fields', {})
+                    for k, v in fields.items():
+                        if isinstance(v, str) and v.strip():
+                            context_lines.append(f"- {k}: {v}")
+                else:
+                    # Fallback: dump key/value pairs
+                    for k, v in card_data.items():
+                        if isinstance(v, str) and v.strip():
+                            context_lines.append(f"- {k}: {v}")
+        except Exception as e:
+            logger.warning(f"Context preparation fallback due to error: {e}")
 
-        if fields.get('Example Sentence'):
-            context += f"Példamondat: {fields.get('Example Sentence')}\n"
-
-        if fields.get('Grammar Code'):
-            context += f"Nyelvtani kód: {fields.get('Grammar Code')}\n"
-
-        return context
+        return "\n".join(context_lines)
 
     async def _request_definitions_from_claude_sdk(self, words: List[str], context: str, instructions: str) -> Dict[str, Any]:
         """Send definition request to Claude Code SDK"""
         try:
             from claude_code_sdk import query, ClaudeCodeOptions
 
-            # Prepare the prompt
+            # Prepare the prompt (explicitly permit/encourage subagents)
             prompt = f"""
 {instructions}
 
@@ -390,6 +417,11 @@ Kérlek, definiáld ezeket a szavakat kreatívan és hozz létre Anki kártyáka
 {', '.join(words)}
 
 Használd a define-with-context parancs pontos utasításait és hozz létre minden szóhoz Anki kártyát a mcp__anki-api__create_card függvénnyel.
+
+FUTÁSSTRATÉGIA:
+- Minden szóhoz INDÍTSD EL egy külön szubügynököt (subagent) párhuzamosan.
+- A szubügynökök NE várjanak egymásra; dolgozzanak egyszerre.
+- Minden szubügynök 3–5 különböző, gazdag magyar definíciós megközelítést készítsen, majd hozzon létre 1 kártyát a legjobb szintézis alapján.
 """
 
             options = ClaudeCodeOptions(
