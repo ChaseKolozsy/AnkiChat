@@ -2167,6 +2167,16 @@ async def login_and_sync_endpoint(request: Request):
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
+# Health check endpoint for CLI
+@app.get("/api/health")
+async def health_check():
+    """Health check endpoint for CLI to verify server is running"""
+    return JSONResponse({
+        "status": "ok",
+        "version": "1.0.0",
+        "service": "ankichat-api"
+    })
+
 # Keep existing API endpoints for compatibility
 @app.post("/api/decks")
 async def get_decks(request: Request):
