@@ -86,7 +86,8 @@ class CardDisplay:
                 for key, value in card_data.items():
                     if self._is_displayable_field(key, value):
                         field_name = self._format_field_name(key)
-                        lines.append(f"[bold]{field_name}:[/bold] {value}")
+                        cleaned_value = self._clean_html_content(str(value))
+                        lines.append(f"[bold]{field_name}:[/bold] {cleaned_value}")
 
         return "\n".join(lines) if lines else "No content available"
 
@@ -96,8 +97,28 @@ class CardDisplay:
         for key, value in fields.items():
             if self._is_displayable_field(key, value):
                 field_name = self._format_field_name(key)
-                lines.append(f"[bold]{field_name}:[/bold] {value}")
+                # Convert HTML <br> tags to newlines and clean up the content
+                cleaned_value = self._clean_html_content(str(value))
+                lines.append(f"[bold]{field_name}:[/bold] {cleaned_value}")
         return lines
+
+    def _clean_html_content(self, content: str) -> str:
+        """Clean HTML content by converting <br> tags to newlines and removing other HTML"""
+        if not content:
+            return content
+
+        # Convert <br> and <br/> to actual newlines
+        import re
+        content = re.sub(r'<br\s*/?>', '\n', content)
+
+        # Remove other HTML tags (keep the content)
+        content = re.sub(r'<[^>]+>', '', content)
+
+        # Clean up extra whitespace
+        content = re.sub(r'\n\s*\n', '\n\n', content)  # Multiple newlines to double newline
+        content = content.strip()
+
+        return content
 
     def _is_displayable_field(self, key: str, value: Any) -> bool:
         """Check if field should be displayed"""
