@@ -363,6 +363,9 @@ class InteractiveStudySession:
 
     def _study_vocabulary(self):
         """Study vocabulary cards"""
+        self.current_mode = 'vocabulary'
+        vocabulary_card = None
+
         while True:
             # Get next card
             result = self.api.get_next_vocabulary_card(self.profile_name)
@@ -379,26 +382,61 @@ class InteractiveStudySession:
                             self._submit_vocabulary_session()
                 break
 
-            card = result['card']
+            vocabulary_card = result['card']
+            self.current_card = vocabulary_card  # Store for navigation
+
+            # Display the vocabulary card with pagination
             self.display.reset_pagination()
-            self.display.display_card_full(card)
+            self.display.display_card_full(vocabulary_card)
 
-            # Simple vocabulary answer (just "studied")
-            self.console.print("[dim][Enter] Studied  [s] Skip  [g] Back to grammar[/dim]\n")
+            # Show vocabulary navigation options
+            self._show_vocabulary_actions()
 
+            # Handle user input
             action = self._get_user_input()
+            self._handle_vocabulary_action(action, vocabulary_card)
 
-            if action == '' or action == '3':
-                # Mark as studied
-                card_id = card.get('card_id') or card.get('id')
-                self.api.cache_vocabulary_answer(self.profile_name, card_id, 3)
-                self.console.print("✅ [green]Marked as studied[/green]\n")
-            elif action == 's':
-                self.console.print("[yellow]Skipped[/yellow]\n")
-            elif action == 'g':
-                break
+    def _show_vocabulary_actions(self):
+        """Show available actions for vocabulary cards"""
+        pagination_hint = ""
+        if self.display.total_pages > 1:
+            pagination_hint = "  [n/p] Next/Prev page"
+        self.console.print(f"[dim][Enter] Studied  [s] Skip{pagination_hint}  [d] Define  [g] Grammar  [h] Help  [q] Quit[/dim]\n")
+
+    def _handle_vocabulary_action(self, action: str, card: Dict[str, Any]):
+        """Handle user action in vocabulary mode"""
+        if action in ['', '3']:
+            # Mark as studied
+            card_id = card.get('card_id') or card.get('id')
+            self.api.cache_vocabulary_answer(self.profile_name, card_id, 3)
+            self.console.print("✅ [green]Marked as studied[/green]\n")
+        elif action == 's':
+            self.console.print("[yellow]Skipped[/yellow]\n")
+        elif action in ['', 'n']:
+            # Navigate to next page
+            if self.display.next_page():
+                self.display.display_card_full(card)
+                self._show_vocabulary_actions()
             else:
-                self.console.print(f"[yellow]Unknown command. Press Enter to mark as studied[/yellow]")
+                self.console.print("[dim]Already on the last page[/dim]")
+        elif action in ['b', 'p']:
+            # Navigate to previous page
+            if self.display.previous_page():
+                self.display.display_card_full(card)
+                self._show_vocabulary_actions()
+            else:
+                self.console.print("[dim]Already on the first page[/dim]")
+        elif action == 'd':
+            self._define_vocabulary_words(card)
+        elif action == 'g':
+            self._switch_to_grammar()
+        elif action in ['h', '?']:
+            self._show_vocabulary_help()
+        elif action == 'q':
+            if Confirm.ask("Are you sure you want to quit?", default=False):
+                self.running = False
+        else:
+            self.console.print(f"[yellow]Unknown command. Press Enter to mark as studied, 'h' for help[/yellow]")
 
     def _submit_vocabulary_session(self):
         """Submit cached vocabulary answers"""
@@ -435,6 +473,93 @@ class InteractiveStudySession:
             display_stats(self.console, counts)
         else:
             self.console.print("[yellow]Failed to load statistics[/yellow]")
+
+    def _define_vocabulary_words(self, card: Dict[str, Any]):
+        """Request word definitions from Claude SDK for vocabulary cards"""
+        # Extract words from the vocabulary card
+        words_str = ""
+        if isinstance(card, dict):
+            # Look for common word fields
+            for field_name in ['Word', 'Front', 'word', 'vocabulary']:
+                if field_name in card and card[field_name]:
+                    words_str = str(card[field_name])
+                    break
+
+        if not words_str:
+            # Try to extract words from other fields
+            content = ""
+            for key, value in card.items():
+                if key not in ['card_id', 'id', 'note_id', 'media_files', 'ease_options'] and value:
+                    content += str(value) + " "
+
+            # Simple word extraction (split by common delimiters)
+            import re
+            words = re.findall(r'\b[a-zA-Z]+\b', content)
+            words_str = ', '.join(list(set(words))[:5])  # Get up to 5 unique words
+
+        if not words_str:
+            self.console.print("[yellow]No words found to define[/yellow]")
+            return
+
+        words = [w.strip() for w in words_str.split(',') if w.strip()]
+        if not words:
+            self.console.print("[yellow]No valid words to define[/yellow]")
+            return
+
+        self.console.print(f"🤖 Requesting definitions for vocabulary words: {', '.join(words)}...")
+
+        result = self.api.request_definitions(
+            username=self.profile_name,
+            words=words,
+            card_context=card
+        )
+
+        if result.get('success'):
+            self.console.print(Panel(
+                "[cyan]Claude is generating vocabulary definitions...[/cyan]\n"
+                "Your request has been processed.",
+                title="Claude SDK Processing",
+                border_style="purple"
+            ))
+        else:
+            error_msg = result.get('error', 'Unknown error')
+            self.console.print(f"[red]Failed to request definitions: {error_msg}[/red]")
+
+    def _show_vocabulary_help(self):
+        """Display help specific to vocabulary mode"""
+        help_text = """
+[bold cyan]Vocabulary Mode Help:[/bold cyan]
+
+[bold]Study Commands:[/bold]
+  [yellow]Enter[/yellow]    - Mark card as studied
+  [yellow]s[/yellow]        - Skip current card
+
+[bold]Navigation:[/bold]
+  [yellow]Enter/n[/yellow]  - Next page (when card has multiple pages)
+  [yellow]b/p[/yellow]      - Previous page
+
+[bold]Learning Commands:[/bold]
+  [yellow]d[/yellow]        - Define words from this card with Claude SDK
+  [yellow]g[/yellow]        - Switch back to grammar mode
+  [yellow]h/?[/yellow]      - Show this help
+  [yellow]q[/yellow]        - Quit session
+
+[bold]Tips:[/bold]
+• Use pagination to read long vocabulary cards
+• Define unfamiliar words for better learning
+• Switch between grammar and vocabulary modes as needed
+• All studied cards are cached for batch submission
+        """.strip()
+
+        panel = Panel(
+            help_text,
+            title="Vocabulary Mode Help",
+            border_style="orange1",
+            padding=(1, 2)
+        )
+
+        self.console.print(panel)
+        self.console.print()  # Add spacing after help
 
     def _quit(self):
         """Quit the session"""
