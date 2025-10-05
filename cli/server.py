@@ -63,9 +63,21 @@ def ensure_server_running(host: str = 'localhost', port: int = 8000) -> str:
         raise RuntimeError(f"Failed to start server process: {e}")
 
     # Wait for server to be ready
-    max_attempts = 15
+    max_attempts = 20
     for attempt in range(max_attempts):
         time.sleep(1)
+
+        # Check if process died
+        if _server_process.poll() is not None:
+            # Process terminated, get output
+            stdout, stderr = _server_process.communicate()
+            error_msg = f"Server process died during startup.\n"
+            if stderr:
+                error_msg += f"STDERR: {stderr}\n"
+            if stdout:
+                error_msg += f"STDOUT: {stdout}"
+            raise RuntimeError(error_msg)
+
         try:
             response = requests.get(f"{server_url}/api/health", timeout=1)
             if response.status_code == 200:
@@ -76,12 +88,26 @@ def ensure_server_running(host: str = 'localhost', port: int = 8000) -> str:
         except requests.exceptions.RequestException:
             continue
 
-    # Server failed to start
+    # Server failed to start - try to get output
+    stdout, stderr = '', ''
+    if _server_process.poll() is None:
+        # Still running but not responding
+        _server_process.terminate()
+        try:
+            stdout, stderr = _server_process.communicate(timeout=2)
+        except:
+            pass
+    else:
+        stdout, stderr = _server_process.communicate()
+
+    error_msg = f"Failed to start API server after {max_attempts} seconds.\n"
+    if stderr:
+        error_msg += f"STDERR: {stderr[:500]}\n"
+    if stdout:
+        error_msg += f"STDOUT: {stdout[:500]}"
+
     cleanup_server()
-    raise RuntimeError(
-        f"Failed to start API server after {max_attempts} seconds. "
-        "Please check that the web app can be started manually."
-    )
+    raise RuntimeError(error_msg)
 
 
 def cleanup_server():
