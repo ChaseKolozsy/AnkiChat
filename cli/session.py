@@ -95,11 +95,12 @@ class InteractiveStudySession:
         """Login and sync with AnkiWeb"""
         self.console.print(Panel("Login to AnkiWeb", style="blue"))
 
+        profile_name = Prompt.ask("Profile name", default="chase")
         username = Prompt.ask("Username")
         password = Prompt.ask("Password", password=True)
 
         self.console.print("🔄 Syncing with AnkiWeb...")
-        result = self.api.login_and_sync(username, username, password)
+        result = self.api.login_and_sync(profile_name, username, password)
 
         if not result.get('success'):
             error_msg = result.get('error', 'Unknown error')
