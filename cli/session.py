@@ -445,7 +445,8 @@ class InteractiveStudySession:
                             status = status_result.get('queue_status', {})
                             queue_length = status.get('queue_length', 0)
                             cached_answers = status.get('cached_answers', 0)
-                            self.console.print(f"[dim]Debug: Queue status - length: {queue_length}, cached answers: {cached_answers}[/dim]")
+                            in_progress = status.get('in_progress', 0)
+                            self.console.print(f"[dim]Debug: Queue status - length: {queue_length}, cached answers: {cached_answers}, in_progress: {in_progress}[/dim]")
                             if status.get('cached_answers', 0) > 0:
                                 if Confirm.ask("Submit vocabulary session?"):
                                     self._submit_vocabulary_session()
