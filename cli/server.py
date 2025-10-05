@@ -53,7 +53,7 @@ def ensure_server_running(host: str = 'localhost', port: int = 8000) -> str:
         _server_process = subprocess.Popen(
             [
                 sys.executable, '-m', 'web_app.enhanced_main',
-                'serve', '--host', host, '--port', str(port)
+                '--host', host, '--port', str(port)
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
