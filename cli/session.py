@@ -410,6 +410,9 @@ class InteractiveStudySession:
             card_id = card.get('card_id') or card.get('id')
             self.api.cache_vocabulary_answer(self.profile_name, card_id, 3)
             self.console.print("✅ [green]Marked as studied[/green]\n")
+
+            # Show updated queue status
+            self._show_vocabulary_queue_status()
         elif action == 'n':
             # Navigate to next page (dedicated key, not Enter)
             if self.display.next_page():
@@ -515,13 +518,58 @@ class InteractiveStudySession:
         if result.get('success'):
             self.console.print(Panel(
                 "[cyan]Claude is generating vocabulary definitions...[/cyan]\n"
-                "Your request has been processed.",
+                "New cards will be added to the vocabulary queue.",
                 title="Claude SDK Processing",
                 border_style="purple"
             ))
+
+            # Set claude_processing flag (for grammar mode behavior)
+            self.claude_processing = True
+
+            # Wait a moment for processing, then check queue status
+            import time
+            time.sleep(2)  # Give it a moment to process
+
+            # Check and display updated queue status
+            self._show_vocabulary_queue_status()
+
+            # Try to get the newly created card
+            new_card_result = self.api.get_next_vocabulary_card(self.profile_name)
+            if new_card_result.get('success') and new_card_result.get('card'):
+                # Display the newly created card immediately
+                new_card = new_card_result['card']
+                self.current_card = new_card
+                self.display.reset_pagination()
+                self.display.display_card_full(new_card)
+                self._show_vocabulary_actions()
+                self.console.print("[green]✅ New vocabulary card ready![/green]")
+            else:
+                self.console.print("[yellow]No new vocabulary card available yet[/yellow]")
+                # Show current card again
+                self._show_vocabulary_actions()
+
         else:
             error_msg = result.get('error', 'Unknown error')
             self.console.print(f"[red]Failed to request definitions: {error_msg}[/red]")
+
+    def _show_vocabulary_queue_status(self):
+        """Display current vocabulary queue status"""
+        status_result = self.api.get_vocabulary_queue_status(self.profile_name)
+        if status_result.get('success'):
+            status = status_result.get('queue_status', {})
+            queue_length = status.get('queue_length', 0)
+            cached_answers = status.get('cached_answers', 0)
+
+            if queue_length > 0 or cached_answers > 0:
+                status_text = f"📚 Vocabulary Queue: {queue_length} cards"
+                if cached_answers > 0:
+                    status_text += f" | {cached_answers} cached answers"
+
+                self.console.print(Panel(
+                    status_text,
+                    title="Queue Status",
+                    border_style="cyan"
+                ))
 
     def _show_vocabulary_help(self):
         """Display help specific to vocabulary mode"""
