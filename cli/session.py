@@ -427,6 +427,7 @@ class InteractiveStudySession:
                     if result.get('success') and result.get('card'):
                         vocabulary_card = result['card']
                         self.current_card = vocabulary_card
+                        self._last_page_reached = False  # Reset for new card
                         self.display.reset_pagination()
                         self.display.display_card_full(vocabulary_card, force_refresh=True)
                         self._show_vocabulary_actions()
@@ -442,6 +443,11 @@ class InteractiveStudySession:
                                 if Confirm.ask("Submit vocabulary session?"):
                                     self._submit_vocabulary_session()
                         break
+                # If new card was created and displayed, update study loop
+                elif action_result == 'new_card':
+                    # Update vocabulary_card to match the new current_card
+                    vocabulary_card = self.current_card
+                    # Study loop continues with the new card
                 # If exited vocabulary mode
                 elif action_result == 'exit_mode':
                     break
@@ -466,15 +472,24 @@ class InteractiveStudySession:
             if self.display.next_page():
                 self.display.display_card_full(card, force_refresh=False)
                 self._show_vocabulary_actions()
+                self._last_page_reached = False  # Reset since we're not on last page anymore
                 return None  # Stay on current card
             else:
-                # At end of card, mark as studied
-                card_id = card.get('card_id') or card.get('id')
-                self.api.cache_vocabulary_answer(self.profile_name, card_id, 3)
-                self.console.print("✅ [green]Marked as studied[/green]\n")
-                # Show updated queue status
-                self._show_vocabulary_queue_status()
-                return 'studied'  # Get next card
+                # At last page - if we haven't indicated this before, show hint
+                if not hasattr(self, '_last_page_reached') or not self._last_page_reached:
+                    self._last_page_reached = True
+                    self.console.print("[dim]📄 Last page reached. Press Enter again to mark as studied, or 'd' to define words.[/dim]")
+                    self._show_vocabulary_actions()
+                    return None  # Stay on current card
+                else:
+                    # Already on last page and user confirmed - mark as studied
+                    card_id = card.get('card_id') or card.get('id')
+                    self.api.cache_vocabulary_answer(self.profile_name, card_id, 3)
+                    self.console.print("✅ [green]Marked as studied[/green]\n")
+                    # Show updated queue status
+                    self._show_vocabulary_queue_status()
+                    self._last_page_reached = False  # Reset for next card
+                    return 'studied'  # Get next card
         elif action == '3':
             # Explicit mark as studied
             card_id = card.get('card_id') or card.get('id')
@@ -482,18 +497,26 @@ class InteractiveStudySession:
             self.console.print("✅ [green]Marked as studied[/green]\n")
             # Show updated queue status
             self._show_vocabulary_queue_status()
+            self._last_page_reached = False  # Reset for next card
             return 'studied'  # Get next card
         elif action in ['b', 'p']:
             # 'b' or 'p' key - show previous page
             if self.display.previous_page():
                 self.display.display_card_full(card, force_refresh=False)
                 self._show_vocabulary_actions()
+                self._last_page_reached = False  # Reset since we went back
             else:
                 self.console.print("[dim]Already on the first page[/dim]")
             return None  # Stay on current card
         elif action == 'd':
-            self._define_vocabulary_words(card)
-            return None  # Stay on current card
+            define_result = self._define_vocabulary_words(card)
+            if define_result == 'new_card_ready':
+                # We've switched to a new card, update the study loop
+                self._last_page_reached = False  # Reset for new card
+                return 'new_card'  # Signal study loop to update vocabulary_card
+            else:
+                self._last_page_reached = True  # User is still on same card after defining
+                return None  # Stay on current card
         elif action == 'g':
             self._switch_to_grammar()
             return 'exit_mode'  # Exit vocabulary mode
@@ -582,7 +605,7 @@ class InteractiveStudySession:
 
         if not words:
             self.console.print("[yellow]No words entered[/yellow]")
-            return
+            return None
 
         self.console.print(f"🤖 Requesting definitions for vocabulary words: {', '.join(words)}...")
 
@@ -620,14 +643,17 @@ class InteractiveStudySession:
                 self.display.display_card_full(new_card)
                 self._show_vocabulary_actions()
                 self.console.print("[green]✅ New vocabulary card ready (top of stack)![/green]")
+                return 'new_card_ready'  # Signal that we've switched to a new card
             else:
                 self.console.print("[yellow]No new vocabulary card available yet[/yellow]")
                 # Show current card again
                 self._show_vocabulary_actions()
+                return None
 
         else:
             error_msg = result.get('error', 'Unknown error')
             self.console.print(f"[red]Failed to request definitions: {error_msg}[/red]")
+            return None
 
     def _show_vocabulary_queue_status(self):
         """Display current vocabulary queue status"""
