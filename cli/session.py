@@ -394,14 +394,7 @@ class InteractiveStudySession:
 
             # Handle user input
             action = self._get_user_input()
-            action_result = self._handle_vocabulary_action(action, vocabulary_card)
-
-            # If action was pagination, continue studying same card
-            if action_result == 'continue_pagination':
-                continue  # Stay on current card for more pagination
-            elif action_result == 'exit_mode':
-                break  # Exit vocabulary mode
-            # If action was 'studied', move to next card (continue loop)
+            self._handle_vocabulary_action(action, vocabulary_card)
 
     def _show_vocabulary_actions(self):
         """Show available actions for vocabulary cards"""
@@ -413,11 +406,10 @@ class InteractiveStudySession:
     def _handle_vocabulary_action(self, action: str, card: Dict[str, Any]):
         """Handle user action in vocabulary mode"""
         if action in ['', 'n']:
-            # Navigate to next page (Enter or n key)
+            # Enter or 'n' key - show next page
             if self.display.next_page():
                 self.display.display_card_full(card)
                 self._show_vocabulary_actions()
-                return 'continue_pagination'  # Stay on this card for more pagination
             else:
                 # At end of card, mark as studied
                 card_id = card.get('card_id') or card.get('id')
@@ -425,7 +417,6 @@ class InteractiveStudySession:
                 self.console.print("✅ [green]Marked as studied[/green]\n")
                 # Show updated queue status
                 self._show_vocabulary_queue_status()
-                return 'studied'  # Move to next card
         elif action == '3':
             # Explicit mark as studied
             card_id = card.get('card_id') or card.get('id')
@@ -433,32 +424,24 @@ class InteractiveStudySession:
             self.console.print("✅ [green]Marked as studied[/green]\n")
             # Show updated queue status
             self._show_vocabulary_queue_status()
-            return 'studied'  # Move to next card
         elif action in ['b', 'p']:
-            # Navigate to previous page
+            # 'b' or 'p' key - show previous page
             if self.display.previous_page():
                 self.display.display_card_full(card)
                 self._show_vocabulary_actions()
-                return 'continue_pagination'  # Stay on this card for more pagination
             else:
                 self.console.print("[dim]Already on the first page[/dim]")
-                return 'continue_pagination'  # Stay on this card
         elif action == 'd':
             self._define_vocabulary_words(card)
-            return 'continue_pagination'  # Stay on this card (new card might appear)
         elif action == 'g':
             self._switch_to_grammar()
-            return 'exit_mode'  # Exit vocabulary mode
         elif action in ['h', '?']:
             self._show_vocabulary_help()
-            return 'continue_pagination'  # Stay on this card
         elif action == 'q':
             if Confirm.ask("Are you sure you want to quit?", default=False):
                 self.running = False
-            return 'continue_pagination'  # Stay on this card unless quitting
         else:
             self.console.print(f"[yellow]Unknown command. Press Enter to mark as studied, 'h' for help[/yellow]")
-            return 'continue_pagination'  # Stay on this card
 
     def _submit_vocabulary_session(self):
         """Submit cached vocabulary answers"""
