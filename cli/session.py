@@ -477,34 +477,12 @@ class InteractiveStudySession:
 
     def _define_vocabulary_words(self, card: Dict[str, Any]):
         """Request word definitions from Claude SDK for vocabulary cards"""
-        # Extract words from the vocabulary card
-        words_str = ""
-        if isinstance(card, dict):
-            # Look for common word fields
-            for field_name in ['Word', 'Front', 'word', 'vocabulary']:
-                if field_name in card and card[field_name]:
-                    words_str = str(card[field_name])
-                    break
-
-        if not words_str:
-            # Try to extract words from other fields
-            content = ""
-            for key, value in card.items():
-                if key not in ['card_id', 'id', 'note_id', 'media_files', 'ease_options'] and value:
-                    content += str(value) + " "
-
-            # Simple word extraction (split by common delimiters)
-            import re
-            words = re.findall(r'\b[a-zA-Z]+\b', content)
-            words_str = ', '.join(list(set(words))[:5])  # Get up to 5 unique words
-
-        if not words_str:
-            self.console.print("[yellow]No words found to define[/yellow]")
-            return
-
+        # Prompt user for words to define
+        words_str = Prompt.ask("Enter words to define (comma-separated)")
         words = [w.strip() for w in words_str.split(',') if w.strip()]
+
         if not words:
-            self.console.print("[yellow]No valid words to define[/yellow]")
+            self.console.print("[yellow]No words entered[/yellow]")
             return
 
         self.console.print(f"🤖 Requesting definitions for vocabulary words: {', '.join(words)}...")
