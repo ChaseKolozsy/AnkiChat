@@ -2081,11 +2081,17 @@ async def get_study_counts_endpoint(request: Request):
         if not username or deck_id is None:
             return JSONResponse({"error": "username and deck_id are required"}, status_code=400)
 
-        # Use the study_ops function to get counts
-        from AnkiClient.src.operations import study_ops
-        result, status_code = study_ops.get_study_counts(username=username, deck_id=deck_id)
+        # Call the AnkiApi study counts endpoint directly
+        import requests
+        response = requests.post("http://localhost:5001/api/study/counts", json={
+            "username": username,
+            "deck_id": deck_id
+        })
 
-        return JSONResponse(result, status_code=status_code)
+        if response.status_code == 200:
+            return JSONResponse(response.json())
+        else:
+            return JSONResponse({"error": f"Failed to get counts: {response.text}"}, status_code=response.status_code)
 
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
