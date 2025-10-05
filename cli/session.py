@@ -439,14 +439,10 @@ class InteractiveStudySession:
                         # No more cards
                         self.console.print("[green]No more vocabulary cards![/green]")
 
-                        # Check queue status for debugging
+                        # Check if there are cached answers to submit
                         status_result = self.api.get_vocabulary_queue_status(self.profile_name)
                         if status_result.get('success'):
                             status = status_result.get('queue_status', {})
-                            queue_length = status.get('queue_length', 0)
-                            cached_answers = status.get('cached_answers', 0)
-                            in_progress = status.get('in_progress', 0)
-                            self.console.print(f"[red]BUG: Queue shows {queue_length} cards but API returned none! Cached: {cached_answers}, In progress: {in_progress}[/red]")
                             if status.get('cached_answers', 0) > 0:
                                 if Confirm.ask("Submit vocabulary session?"):
                                     self._submit_vocabulary_session()
@@ -641,7 +637,13 @@ class InteractiveStudySession:
             # Check and display updated queue status
             self._show_vocabulary_queue_status()
 
-            # For LIFO stack behavior, get the most recently added card
+            # For LIFO stack behavior, requeue current card then get the newly added card
+            # Requeue the current card before getting the new one (like web app)
+            if card:
+                requeue_result = self.api.requeue_vocabulary_card(self.profile_name, card)
+                if not requeue_result.get('success'):
+                    logger.warning(f"Failed to requeue current card: {requeue_result.get('error')}")
+
             new_card_result = self.api.get_next_vocabulary_card(self.profile_name)
             if new_card_result.get('success') and new_card_result.get('card'):
                 # Display the newly created card immediately (top of stack)
