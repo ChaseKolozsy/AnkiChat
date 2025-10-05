@@ -183,12 +183,14 @@ class InteractiveStudySession:
                 self._answer_card(int(action))
             else:
                 self.console.print("[yellow]⚠️  Flip card first (press 'f')[/yellow]")
-        elif action == '' and self.display.has_more_pages():
-            # Enter key - show next page
+        elif action in ['', 'n']:
+            # Enter or 'n' key - show next page
             if self.display.next_page():
                 self._redisplay_current_card()
-        elif action == 'b':
-            # Previous page
+            else:
+                self.console.print("[dim]Already on the last page[/dim]")
+        elif action in ['b', 'p']:
+            # 'b' or 'p' key - show previous page
             if self.display.previous_page():
                 self._redisplay_current_card()
         elif action == 'd':
@@ -225,15 +227,23 @@ class InteractiveStudySession:
 
     def _redisplay_current_card(self):
         """Redisplay current page of current card"""
-        # Just show the current page again after pagination change
-        pass
+        if self.card_flipped:
+            self._display_card_back()
+        else:
+            self._display_card_front()
 
     def _show_card_actions(self):
         """Show available actions for unflipped card"""
-        self.console.print("[dim][f] Flip  [d] Define  [v] Vocab  [s] Stats  [h] Help  [q] Quit[/dim]\n")
+        pagination_hint = ""
+        if self.display.total_pages > 1:
+            pagination_hint = "  [n/p] Next/Prev page"
+        self.console.print(f"[dim][f] Flip  [d] Define  [v] Vocab  [s] Stats{pagination_hint}  [h] Help  [q] Quit[/dim]\n")
 
     def _show_answer_options(self):
         """Show answer options for flipped card"""
+        pagination_hint = ""
+        if self.display.total_pages > 1:
+            pagination_hint = "  [n/p] Next/Prev page"
         self.console.print(
             "[dim]"
             "[red]1[/red] Again  "
@@ -241,7 +251,7 @@ class InteractiveStudySession:
             "[green]3[/green] Good  "
             "[cyan]4[/cyan] Easy  "
             "[white]|[/white]  "
-            "[dim]h[/dim] Help"
+            f"[dim]h[/dim] Help{pagination_hint}"
             "[/dim]\n"
         )
 

@@ -287,8 +287,9 @@ def show_help(console: Console):
   [yellow]4[/yellow]        - Answer: Easy (too easy, longer interval)
 
 [bold]Navigation:[/bold]
-  [yellow]Enter[/yellow]    - Next page (when card has multiple pages)
-  [yellow]b[/yellow]        - Previous page
+  [yellow]Enter/n[/yellow]  - Next page (when card has multiple pages)
+  [yellow]b/p[/yellow]      - Previous page
+  [yellow]Enter[/yellow]   - Next page (alternative key)
 
 [bold]Session Commands:[/bold]
   [yellow]d[/yellow]        - Define words with Claude SDK
