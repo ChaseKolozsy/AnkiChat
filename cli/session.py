@@ -290,14 +290,14 @@ class InteractiveStudySession:
         self.console.print(f"✅ Card answered: [bold]{answer_labels[answer]}[/bold]\n")
 
         if self.claude_processing:
-            # Answer was cached
+            # Answer was cached - show message but continue to next card
             self.console.print(Panel(
                 "[cyan]Answer cached while Claude generates vocabulary cards.[/cyan]\n"
-                "You can study vocabulary cards now or wait.",
+                "You can study vocabulary cards now or continue.",
                 title="Answer Cached",
                 border_style="purple"
             ))
-            return
+            # Don't return - continue to get next card like web app
 
         # Get next card
         next_card = result.get('next_card')
