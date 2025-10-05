@@ -304,6 +304,36 @@ class InteractiveStudySession:
         if next_card:
             self.current_card = next_card
             self._display_card_front()
+
+            # Auto-answer logic: if claude is processing and there are cached answers
+            # automatically submit the same answer for the next few cards
+            if self.claude_processing:
+                status_result = self.api.get_vocabulary_queue_status(self.profile_name)
+                if status_result.get('success'):
+                    status = status_result.get('queue_status', {})
+                    cached_answers = status.get('cached_answers', 0)
+                    if cached_answers > 0:
+                        # Auto-answer this card with the same answer
+                        auto_result = self.api.answer_grammar_card(
+                            username=self.profile_name,
+                            card_id=next_card.get('card_id', 0),
+                            answer=3,  # Use 'Good' as default for auto-answered cards
+                            claude_processing=True
+                        )
+
+                        if auto_result.get('success'):
+                            self.console.print("[dim]🤖 Auto-answered (Good) while vocabulary generates...[/dim]")
+                            # Get the next card after auto-answering
+                            next_next_card = auto_result.get('next_card')
+                            if next_next_card:
+                                self.current_card = next_next_card
+                                self._display_card_front()
+                                self.console.print("[dim]💡 Press 'v' to study vocabulary cards when ready[/dim]")
+                            else:
+                                self.console.print("[green]🎉 All grammar cards processed![/green]")
+                                self.running = False
+                        else:
+                            self.console.print("[yellow]Auto-answer failed, switching to manual[/yellow]")
         else:
             self.console.print("[green]🎉 No more cards to study![/green]")
             self.running = False
