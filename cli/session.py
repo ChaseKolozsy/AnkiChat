@@ -423,7 +423,9 @@ class InteractiveStudySession:
                 # If card was marked as studied, get next card
                 if action_result == 'studied':
                     # Get next card from stack
+                    self.console.print("[dim]Debug: Getting next vocabulary card...[/dim]")
                     result = self.api.get_next_vocabulary_card(self.profile_name)
+                    self.console.print(f"[dim]Debug: API result - success: {result.get('success')}, has card: {bool(result.get('card'))}[/dim]")
                     if result.get('success') and result.get('card'):
                         vocabulary_card = result['card']
                         self.current_card = vocabulary_card
@@ -431,14 +433,19 @@ class InteractiveStudySession:
                         self.display.reset_pagination()
                         self.display.display_card_full(vocabulary_card, force_refresh=True)
                         self._show_vocabulary_actions()
+                        self.console.print("[dim]Debug: Successfully loaded next vocabulary card[/dim]")
                     else:
                         # No more cards
                         self.console.print("[green]No more vocabulary cards![/green]")
+                        self.console.print(f"[dim]Debug: API response: {result}[/dim]")
 
-                        # Check if there are cached answers to submit
+                        # Check queue status for debugging
                         status_result = self.api.get_vocabulary_queue_status(self.profile_name)
                         if status_result.get('success'):
                             status = status_result.get('queue_status', {})
+                            queue_length = status.get('queue_length', 0)
+                            cached_answers = status.get('cached_answers', 0)
+                            self.console.print(f"[dim]Debug: Queue status - length: {queue_length}, cached answers: {cached_answers}[/dim]")
                             if status.get('cached_answers', 0) > 0:
                                 if Confirm.ask("Submit vocabulary session?"):
                                     self._submit_vocabulary_session()
