@@ -366,35 +366,61 @@ class InteractiveStudySession:
         self.current_mode = 'vocabulary'
         vocabulary_card = None
 
-        while True:
-            # Get next card
-            result = self.api.get_next_vocabulary_card(self.profile_name)
+        # Get first card
+        result = self.api.get_next_vocabulary_card(self.profile_name)
 
-            if not result.get('success') or not result.get('card'):
-                self.console.print("[green]No more vocabulary cards![/green]")
+        if not result.get('success') or not result.get('card'):
+            self.console.print("[green]No vocabulary cards available![/green]")
+            return
 
-                # Check if there are cached answers to submit
-                status_result = self.api.get_vocabulary_queue_status(self.profile_name)
-                if status_result.get('success'):
-                    status = status_result.get('queue_status', {})
-                    if status.get('cached_answers', 0) > 0:
-                        if Confirm.ask("Submit vocabulary session?"):
-                            self._submit_vocabulary_session()
-                break
+        vocabulary_card = result['card']
+        self.current_card = vocabulary_card  # Store for navigation
 
-            vocabulary_card = result['card']
-            self.current_card = vocabulary_card  # Store for navigation
+        # Display the vocabulary card with pagination
+        self.display.reset_pagination()
+        self.display.display_card_full(vocabulary_card)
 
-            # Display the vocabulary card with pagination
-            self.display.reset_pagination()
-            self.display.display_card_full(vocabulary_card)
+        # Show vocabulary navigation options
+        self._show_vocabulary_actions()
 
-            # Show vocabulary navigation options
-            self._show_vocabulary_actions()
+        # Study loop - stay on current card until marked as studied
+        while self.running and self.current_mode == 'vocabulary':
+            try:
+                # Handle user input
+                action = self._get_user_input()
+                action_result = self._handle_vocabulary_action(action, vocabulary_card)
 
-            # Handle user input
-            action = self._get_user_input()
-            self._handle_vocabulary_action(action, vocabulary_card)
+                # If card was marked as studied, get next card
+                if action_result == 'studied':
+                    # Get next card from stack
+                    result = self.api.get_next_vocabulary_card(self.profile_name)
+                    if result.get('success') and result.get('card'):
+                        vocabulary_card = result['card']
+                        self.current_card = vocabulary_card
+                        self.display.reset_pagination()
+                        self.display.display_card_full(vocabulary_card)
+                        self._show_vocabulary_actions()
+                    else:
+                        # No more cards
+                        self.console.print("[green]No more vocabulary cards![/green]")
+
+                        # Check if there are cached answers to submit
+                        status_result = self.api.get_vocabulary_queue_status(self.profile_name)
+                        if status_result.get('success'):
+                            status = status_result.get('queue_status', {})
+                            if status.get('cached_answers', 0) > 0:
+                                if Confirm.ask("Submit vocabulary session?"):
+                                    self._submit_vocabulary_session()
+                        break
+                # If exited vocabulary mode
+                elif action_result == 'exit_mode':
+                    break
+
+            except KeyboardInterrupt:
+                self.console.print("\n[yellow]Use 'q' to quit[/yellow]")
+            except Exception as e:
+                logger.error(f"Error in vocabulary study loop: {e}")
+                self.console.print(f"[red]Error: {e}[/red]")
 
     def _show_vocabulary_actions(self):
         """Show available actions for vocabulary cards"""
@@ -410,6 +436,7 @@ class InteractiveStudySession:
             if self.display.next_page():
                 self.display.display_card_full(card)
                 self._show_vocabulary_actions()
+                return None  # Stay on current card
             else:
                 # At end of card, mark as studied
                 card_id = card.get('card_id') or card.get('id')
@@ -417,6 +444,7 @@ class InteractiveStudySession:
                 self.console.print("✅ [green]Marked as studied[/green]\n")
                 # Show updated queue status
                 self._show_vocabulary_queue_status()
+                return 'studied'  # Get next card
         elif action == '3':
             # Explicit mark as studied
             card_id = card.get('card_id') or card.get('id')
@@ -424,6 +452,7 @@ class InteractiveStudySession:
             self.console.print("✅ [green]Marked as studied[/green]\n")
             # Show updated queue status
             self._show_vocabulary_queue_status()
+            return 'studied'  # Get next card
         elif action in ['b', 'p']:
             # 'b' or 'p' key - show previous page
             if self.display.previous_page():
@@ -431,17 +460,23 @@ class InteractiveStudySession:
                 self._show_vocabulary_actions()
             else:
                 self.console.print("[dim]Already on the first page[/dim]")
+            return None  # Stay on current card
         elif action == 'd':
             self._define_vocabulary_words(card)
+            return None  # Stay on current card
         elif action == 'g':
             self._switch_to_grammar()
+            return 'exit_mode'  # Exit vocabulary mode
         elif action in ['h', '?']:
             self._show_vocabulary_help()
+            return None  # Stay on current card
         elif action == 'q':
             if Confirm.ask("Are you sure you want to quit?", default=False):
                 self.running = False
+            return None  # Stay on current card
         else:
             self.console.print(f"[yellow]Unknown command. Press Enter to mark as studied, 'h' for help[/yellow]")
+            return None  # Stay on current card
 
     def _submit_vocabulary_session(self):
         """Submit cached vocabulary answers"""
