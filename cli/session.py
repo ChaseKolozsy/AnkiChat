@@ -533,16 +533,16 @@ class InteractiveStudySession:
             # Check and display updated queue status
             self._show_vocabulary_queue_status()
 
-            # Try to get the newly created card
+            # For LIFO stack behavior, get the most recently added card
             new_card_result = self.api.get_next_vocabulary_card(self.profile_name)
             if new_card_result.get('success') and new_card_result.get('card'):
-                # Display the newly created card immediately
+                # Display the newly created card immediately (top of stack)
                 new_card = new_card_result['card']
                 self.current_card = new_card
                 self.display.reset_pagination()
                 self.display.display_card_full(new_card)
                 self._show_vocabulary_actions()
-                self.console.print("[green]✅ New vocabulary card ready![/green]")
+                self.console.print("[green]✅ New vocabulary card ready (top of stack)![/green]")
             else:
                 self.console.print("[yellow]No new vocabulary card available yet[/yellow]")
                 # Show current card again
@@ -561,13 +561,13 @@ class InteractiveStudySession:
             cached_answers = status.get('cached_answers', 0)
 
             if queue_length > 0 or cached_answers > 0:
-                status_text = f"📚 Vocabulary Queue: {queue_length} cards"
+                status_text = f"📚 Vocabulary Stack (LIFO): {queue_length} cards"
                 if cached_answers > 0:
                     status_text += f" | {cached_answers} cached answers"
 
                 self.console.print(Panel(
                     status_text,
-                    title="Queue Status",
+                    title="Stack Status",
                     border_style="cyan"
                 ))
 
@@ -593,6 +593,7 @@ class InteractiveStudySession:
 • Use 'n' to navigate through long vocabulary cards page by page
 • Press Enter when done reading to mark as studied
 • Define unfamiliar words for better learning
+• New cards are added to TOP of stack (LIFO) - newest first
 • Switch between grammar and vocabulary modes as needed
 • All studied cards are cached for batch submission
         """.strip()
