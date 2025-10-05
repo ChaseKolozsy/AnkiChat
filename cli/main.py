@@ -34,10 +34,10 @@ console = Console()
 )
 @click.option(
     '--port',
-    default=8000,
+    default=8888,
     type=int,
     envvar='ANKICHAT_PORT',
-    help='API server port (default: 8000)'
+    help='API server port (default: 8888)'
 )
 @click.option(
     '--verbose', '-v',
