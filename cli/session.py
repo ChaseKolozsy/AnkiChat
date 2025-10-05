@@ -530,11 +530,25 @@ class InteractiveStudySession:
         self.current_mode = 'grammar'
         self.console.print("\n📚 [bold]Grammar Mode[/bold]\n")
 
-        if self.current_card:
-            if self.card_flipped:
-                self._display_card_back()
-            else:
+        # Refresh current card from grammar session
+        if self.deck_id:
+            # Try to get the current card from the grammar session
+            result = self.api.start_dual_session(self.profile_name, self.deck_id)
+            if result.get('success') and result.get('current_card'):
+                self.current_card = result['current_card']
+                self.card_flipped = False  # Reset flip state
+
+                # Display the refreshed grammar card
                 self._display_card_front()
+            else:
+                self.console.print("[yellow]No active grammar session found[/yellow]")
+                # Reset to default card display if no session
+                self.current_card = None
+                self.card_flipped = False
+        else:
+            self.console.print("[yellow]No deck selected[/yellow]")
+            self.current_card = None
+            self.card_flipped = False
 
     def _show_stats(self):
         """Show current session statistics"""
