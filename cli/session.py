@@ -425,45 +425,32 @@ class InteractiveStudySession:
                     # Clear current card first (like web app)
                     self.current_card = None
 
-                    # Try to get next card with retry logic (like web app polling)
-                    max_retries = 3
-                    retry_delay = 1  # seconds
+                    # Get next card immediately
+                    result = self.api.get_next_vocabulary_card(self.profile_name)
 
-                    for attempt in range(max_retries):
-                        self.console.print(f"[dim]Getting next vocabulary card... (attempt {attempt + 1}/{max_retries})[/dim]")
-                        result = self.api.get_next_vocabulary_card(self.profile_name)
+                    if result.get('success') and result.get('card'):
+                        vocabulary_card = result['card']
+                        self.current_card = vocabulary_card
+                        self._last_page_reached = False  # Reset for new card
+                        self.display.reset_pagination()
+                        self.display.display_card_full(vocabulary_card, force_refresh=True)
+                        self._show_vocabulary_actions()
+                    else:
+                        # No more cards
+                        self.console.print("[green]No more vocabulary cards![/green]")
 
-                        if result.get('success') and result.get('card'):
-                            vocabulary_card = result['card']
-                            self.current_card = vocabulary_card
-                            self._last_page_reached = False  # Reset for new card
-                            self.display.reset_pagination()
-                            self.display.display_card_full(vocabulary_card, force_refresh=True)
-                            self._show_vocabulary_actions()
-                            self.console.print("[green]✅ Loaded next vocabulary card[/green]")
-                            break
-                        else:
-                            if attempt < max_retries - 1:
-                                self.console.print(f"[dim]No card available, retrying in {retry_delay} second(s)...[/dim]")
-                                import time
-                                time.sleep(retry_delay)
-                                retry_delay *= 2  # Exponential backoff
-                            else:
-                                # No more cards after all retries
-                                self.console.print("[green]No more vocabulary cards![/green]")
-
-                                # Check queue status for debugging
-                                status_result = self.api.get_vocabulary_queue_status(self.profile_name)
-                                if status_result.get('success'):
-                                    status = status_result.get('queue_status', {})
-                                    queue_length = status.get('queue_length', 0)
-                                    cached_answers = status.get('cached_answers', 0)
-                                    in_progress = status.get('in_progress', 0)
-                                    self.console.print(f"[dim]Queue: {queue_length} cards, {cached_answers} cached, {in_progress} in progress[/dim]")
-                                    if status.get('cached_answers', 0) > 0:
-                                        if Confirm.ask("Submit vocabulary session?"):
-                                            self._submit_vocabulary_session()
-                                break
+                        # Check queue status for debugging
+                        status_result = self.api.get_vocabulary_queue_status(self.profile_name)
+                        if status_result.get('success'):
+                            status = status_result.get('queue_status', {})
+                            queue_length = status.get('queue_length', 0)
+                            cached_answers = status.get('cached_answers', 0)
+                            in_progress = status.get('in_progress', 0)
+                            self.console.print(f"[red]BUG: Queue shows {queue_length} cards but API returned none! Cached: {cached_answers}, In progress: {in_progress}[/red]")
+                            if status.get('cached_answers', 0) > 0:
+                                if Confirm.ask("Submit vocabulary session?"):
+                                    self._submit_vocabulary_session()
+                        break
                 # If new card was created and displayed, update study loop
                 elif action_result == 'new_card':
                     # Update vocabulary_card to match the new current_card
