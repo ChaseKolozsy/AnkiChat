@@ -43,25 +43,28 @@ class CardDisplay:
         """Display full card content (for vocabulary cards)"""
         self._render_card(card_data, side="VOCABULARY", color="orange1")
 
-    def _render_card(self, card_data: Dict[str, Any], side: str, color: str):
+    def _render_card(self, card_data: Dict[str, Any], side: str, color: str, force_refresh: bool = True):
         """Render card content with pagination"""
         if not card_data:
             self.console.print("[yellow]No card data available[/yellow]")
             return
 
-        # Extract card fields
-        content = self._extract_card_content(card_data)
+        # Only re-extract and re-paginate if force_refresh is True
+        if force_refresh or not self.pages:
+            # Extract card fields
+            content = self._extract_card_content(card_data)
 
-        if not content:
-            self.console.print("[yellow]No content to display[/yellow]")
-            return
+            if not content:
+                self.console.print("[yellow]No content to display[/yellow]")
+                return
 
-        # Paginate content
-        self.pages = self._paginate_content(content)
-        self.total_pages = len(self.pages)
-        self.current_page = 0
+            # Paginate content
+            self.pages = self._paginate_content(content)
+            self.total_pages = len(self.pages)
+            if force_refresh:
+                self.current_page = 0
 
-        # Display first page
+        # Display current page
         self._show_current_page(side, color)
 
     def _extract_card_content(self, card_data: Dict[str, Any]) -> str:
@@ -140,10 +143,8 @@ class CardDisplay:
     def _paginate_content(self, content: str) -> List[str]:
         """Split content into pages"""
         lines = content.split('\n')
-        print(f"DEBUG: Total lines: {len(lines)}, Lines per page: {self.lines_per_page}")
 
         if len(lines) <= self.lines_per_page:
-            print("DEBUG: Content fits on one page")
             return [content]
 
         pages = []
@@ -151,20 +152,16 @@ class CardDisplay:
             page_lines = lines[i:i + self.lines_per_page]
             page_content = '\n'.join(page_lines)
             pages.append(page_content)
-            print(f"DEBUG: Created page {len(pages)} with {len(page_lines)} lines")
 
-        print(f"DEBUG: Total pages created: {len(pages)}")
         return pages
 
     def _show_current_page(self, side: str, color: str):
         """Show current page of card"""
         if not self.pages:
-            print("DEBUG: No pages to display")
             return
 
         page_content = self.pages[self.current_page]
         page_indicator = f"Page {self.current_page + 1}/{self.total_pages}" if self.total_pages > 1 else ""
-        print(f"DEBUG: Displaying page {self.current_page + 1}/{self.total_pages}")
 
         title = f"CARD - {side}"
         if page_indicator:

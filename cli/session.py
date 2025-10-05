@@ -185,12 +185,9 @@ class InteractiveStudySession:
                 self.console.print("[yellow]⚠️  Flip card first (press 'f')[/yellow]")
         elif action in ['', 'n']:
             # Enter or 'n' key - show next page
-            print(f"DEBUG: Current page: {self.display.current_page}, Total pages: {self.display.total_pages}")
             if self.display.next_page():
-                print(f"DEBUG: Moved to page {self.display.current_page}")
                 self._redisplay_current_card()
             else:
-                print(f"DEBUG: No more pages. Current: {self.display.current_page}, Total: {self.display.total_pages}")
                 self.console.print("[dim]Already on the last page[/dim]")
         elif action in ['b', 'p']:
             # 'b' or 'p' key - show previous page
@@ -231,9 +228,9 @@ class InteractiveStudySession:
     def _redisplay_current_card(self):
         """Redisplay current page of current card"""
         if self.card_flipped:
-            self._display_card_back()
+            self.display._render_card(self.current_card, side="BACK", color="green", force_refresh=False)
         else:
-            self._display_card_front()
+            self.display._render_card(self.current_card, side="FRONT", color="blue", force_refresh=False)
 
     def _show_card_actions(self):
         """Show available actions for unflipped card"""
