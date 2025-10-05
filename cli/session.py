@@ -401,7 +401,7 @@ class InteractiveStudySession:
         pagination_hint = ""
         if self.display.total_pages > 1:
             pagination_hint = "  [n/p] Next/Prev page"
-        self.console.print(f"[dim][Enter] Studied  [s] Skip{pagination_hint}  [d] Define  [g] Grammar  [h] Help  [q] Quit[/dim]\n")
+        self.console.print(f"[dim][Enter] Studied{pagination_hint}  [d] Define  [g] Grammar  [h] Help  [q] Quit[/dim]\n")
 
     def _handle_vocabulary_action(self, action: str, card: Dict[str, Any]):
         """Handle user action in vocabulary mode"""
@@ -410,10 +410,8 @@ class InteractiveStudySession:
             card_id = card.get('card_id') or card.get('id')
             self.api.cache_vocabulary_answer(self.profile_name, card_id, 3)
             self.console.print("✅ [green]Marked as studied[/green]\n")
-        elif action == 's':
-            self.console.print("[yellow]Skipped[/yellow]\n")
-        elif action in ['', 'n']:
-            # Navigate to next page
+        elif action == 'n':
+            # Navigate to next page (dedicated key, not Enter)
             if self.display.next_page():
                 self.display.display_card_full(card)
                 self._show_vocabulary_actions()
@@ -531,11 +529,10 @@ class InteractiveStudySession:
 [bold cyan]Vocabulary Mode Help:[/bold cyan]
 
 [bold]Study Commands:[/bold]
-  [yellow]Enter[/yellow]    - Mark card as studied
-  [yellow]s[/yellow]        - Skip current card
+  [yellow]Enter[/yellow]    - Mark card as studied (moves to next card)
 
 [bold]Navigation:[/bold]
-  [yellow]Enter/n[/yellow]  - Next page (when card has multiple pages)
+  [yellow]n[/yellow]        - Next page (when card has multiple pages)
   [yellow]b/p[/yellow]      - Previous page
 
 [bold]Learning Commands:[/bold]
@@ -545,7 +542,8 @@ class InteractiveStudySession:
   [yellow]q[/yellow]        - Quit session
 
 [bold]Tips:[/bold]
-• Use pagination to read long vocabulary cards
+• Use 'n' to navigate through long vocabulary cards page by page
+• Press Enter when done reading to mark as studied
 • Define unfamiliar words for better learning
 • Switch between grammar and vocabulary modes as needed
 • All studied cards are cached for batch submission
