@@ -52,7 +52,7 @@ def ensure_server_running(host: str = 'localhost', port: int = 8888) -> str:
     try:
         _server_process = subprocess.Popen(
             [
-                sys.executable, '-m', 'web_app.enhanced_main',
+                'anki-chat-web',
                 '--host', host, '--port', str(port)
             ],
             stdout=subprocess.PIPE,
