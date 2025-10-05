@@ -51,19 +51,15 @@ dependencies = [
     "asyncpg",
     "mcp",
     "mcp-grep",
-    "claude-code-sdk"
+    "claude-code-sdk",
+    "click>=8.1.0",
+    "prompt-toolkit>=3.0.0",
 ]
 
 [project.scripts]
 anki-chat-mcp = "anki_chat.cli:main"
 anki-chat-web = "web_app.enhanced_main:main"
 ankichat-cli = "cli.main:cli"
-
-[project.optional-dependencies]
-cli = [
-    "click>=8.1.0",
-    "prompt-toolkit>=3.0.0",
-]
 
 [tool.setuptools]
 packages = ["anki_chat", "src", "src.servers", "src.clients", "AnkiApi", "AnkiClient", "AnkiClient.src", "AnkiClient.src.operations", "web_app", "cli"]
