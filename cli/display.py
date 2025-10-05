@@ -39,9 +39,9 @@ class CardDisplay:
         """Display back of card"""
         self._render_card(card_data, side="BACK", color="green")
 
-    def display_card_full(self, card_data: Dict[str, Any]):
+    def display_card_full(self, card_data: Dict[str, Any], force_refresh: bool = False):
         """Display full card content (for vocabulary cards)"""
-        self._render_card(card_data, side="VOCABULARY", color="orange1")
+        self._render_card(card_data, side="VOCABULARY", color="orange1", force_refresh=force_refresh)
 
     def _render_card(self, card_data: Dict[str, Any], side: str, color: str, force_refresh: bool = True):
         """Render card content with pagination"""

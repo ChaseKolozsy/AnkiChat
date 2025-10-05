@@ -378,7 +378,7 @@ class InteractiveStudySession:
 
         # Display the vocabulary card with pagination
         self.display.reset_pagination()
-        self.display.display_card_full(vocabulary_card)
+        self.display.display_card_full(vocabulary_card, force_refresh=True)
 
         # Show vocabulary navigation options
         self._show_vocabulary_actions()
@@ -398,7 +398,7 @@ class InteractiveStudySession:
                         vocabulary_card = result['card']
                         self.current_card = vocabulary_card
                         self.display.reset_pagination()
-                        self.display.display_card_full(vocabulary_card)
+                        self.display.display_card_full(vocabulary_card, force_refresh=True)
                         self._show_vocabulary_actions()
                     else:
                         # No more cards
@@ -434,7 +434,7 @@ class InteractiveStudySession:
         if action in ['', 'n']:
             # Enter or 'n' key - show next page
             if self.display.next_page():
-                self.display.display_card_full(card)
+                self.display.display_card_full(card, force_refresh=False)
                 self._show_vocabulary_actions()
                 return None  # Stay on current card
             else:
@@ -456,7 +456,7 @@ class InteractiveStudySession:
         elif action in ['b', 'p']:
             # 'b' or 'p' key - show previous page
             if self.display.previous_page():
-                self.display.display_card_full(card)
+                self.display.display_card_full(card, force_refresh=False)
                 self._show_vocabulary_actions()
             else:
                 self.console.print("[dim]Already on the first page[/dim]")
