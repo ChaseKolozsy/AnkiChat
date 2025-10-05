@@ -377,6 +377,13 @@ class InteractiveStudySession:
         self.current_mode = 'vocabulary'
         self.console.print("\n📖 [bold]Vocabulary Mode[/bold]\n")
 
+        # Close grammar session before switching to vocabulary
+        close_result = self.api.close_all_sessions(self.profile_name)
+        if close_result.get('success'):
+            self.console.print("[dim]Closed grammar session[/dim]")
+        else:
+            self.console.print(f"[yellow]Warning: Could not close grammar session: {close_result.get('error', 'Unknown error')}[/yellow]")
+
         # Show queue status
         status_result = self.api.get_vocabulary_queue_status(self.profile_name)
         if status_result.get('success'):
@@ -530,9 +537,15 @@ class InteractiveStudySession:
         self.current_mode = 'grammar'
         self.console.print("\n📚 [bold]Grammar Mode[/bold]\n")
 
-        # Refresh current card from grammar session
+        # Close all sessions (vocabulary, any existing grammar) before restarting
+        close_result = self.api.close_all_sessions(self.profile_name)
+        if close_result.get('success'):
+            self.console.print("[dim]Closed previous sessions[/dim]")
+        else:
+            self.console.print(f"[yellow]Warning: Could not close sessions: {close_result.get('error', 'Unknown error')}[/yellow]")
+
+        # Start fresh grammar session
         if self.deck_id:
-            # Try to get the current card from the grammar session
             result = self.api.start_dual_session(self.profile_name, self.deck_id)
             if result.get('success') and result.get('current_card'):
                 self.current_card = result['current_card']
