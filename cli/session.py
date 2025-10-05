@@ -43,7 +43,8 @@ class InteractiveStudySession:
 
         # Session state
         self.running = True
-        self.username: Optional[str] = None
+        self.profile_name: Optional[str] = None
+        self.username: Optional[str] = None  # AnkiWeb username
         self.deck_id: Optional[int] = None
         self.deck_name: Optional[str] = None
         self.current_card: Optional[Dict[str, Any]] = None
@@ -61,7 +62,7 @@ class InteractiveStudySession:
         """
         try:
             # Login
-            self.username = self._login()
+            self.profile_name = self._login()
 
             # Select deck
             if deck_id is None:
@@ -107,14 +108,18 @@ class InteractiveStudySession:
             self.console.print(f"[red]Login failed: {error_msg}[/red]")
             sys.exit(1)
 
+        # Store both profile_name and username for later use
+        self.profile_name = profile_name
+        self.username = username
+
         self.console.print("✅ Login successful!\n")
-        return username
+        return profile_name  # Return profile_name for deck operations
 
     def _select_deck(self) -> int:
         """Interactive deck selection"""
         self.console.print("📚 Loading decks...\n")
 
-        decks = self.api.get_decks(self.username)
+        decks = self.api.get_decks(self.profile_name)
 
         if not decks:
             self.console.print("[red]No decks found![/red]")
@@ -122,7 +127,7 @@ class InteractiveStudySession:
 
         # Fetch counts for each deck
         for deck in decks:
-            counts = self.api.get_deck_counts(deck['id'], self.username)
+            counts = self.api.get_deck_counts(deck['id'], self.profile_name)
             deck.update(counts)
 
         # Display deck table
@@ -146,7 +151,7 @@ class InteractiveStudySession:
         """Start the study session"""
         self.console.print(f"\n🎯 Starting study session: [bold]{self.deck_name}[/bold]\n")
 
-        result = self.api.start_dual_session(self.username, self.deck_id)
+        result = self.api.start_dual_session(self.profile_name, self.deck_id)
 
         if not result.get('success'):
             error_msg = result.get('error', 'Unknown error')
@@ -246,7 +251,7 @@ class InteractiveStudySession:
             self.console.print("[yellow]Card is already flipped[/yellow]")
             return
 
-        result = self.api.flip_card(self.username)
+        result = self.api.flip_card(self.profile_name)
 
         if not result.get('success'):
             error_msg = result.get('error', 'Unknown error')
@@ -259,7 +264,7 @@ class InteractiveStudySession:
     def _answer_card(self, answer: int):
         """Submit answer and get next card"""
         result = self.api.answer_grammar_card(
-            username=self.username,
+            username=self.profile_name,
             card_id=self.current_card.get('card_id', 0),
             answer=answer,
             claude_processing=self.claude_processing
@@ -305,7 +310,7 @@ class InteractiveStudySession:
         self.console.print(f"🤖 Requesting definitions for: {', '.join(words)}...")
 
         result = self.api.request_definitions(
-            username=self.username,
+            username=self.profile_name,
             words=words,
             card_context=self.current_card
         )
@@ -333,7 +338,7 @@ class InteractiveStudySession:
         self.console.print("\n📖 [bold]Vocabulary Mode[/bold]\n")
 
         # Show queue status
-        status_result = self.api.get_vocabulary_queue_status(self.username)
+        status_result = self.api.get_vocabulary_queue_status(self.profile_name)
         if status_result.get('success'):
             status = status_result.get('queue_status', {})
             display_vocabulary_queue(self.console, status)
@@ -350,13 +355,13 @@ class InteractiveStudySession:
         """Study vocabulary cards"""
         while True:
             # Get next card
-            result = self.api.get_next_vocabulary_card(self.username)
+            result = self.api.get_next_vocabulary_card(self.profile_name)
 
             if not result.get('success') or not result.get('card'):
                 self.console.print("[green]No more vocabulary cards![/green]")
 
                 # Check if there are cached answers to submit
-                status_result = self.api.get_vocabulary_queue_status(self.username)
+                status_result = self.api.get_vocabulary_queue_status(self.profile_name)
                 if status_result.get('success'):
                     status = status_result.get('queue_status', {})
                     if status.get('cached_answers', 0) > 0:
@@ -376,7 +381,7 @@ class InteractiveStudySession:
             if action == '' or action == '3':
                 # Mark as studied
                 card_id = card.get('card_id') or card.get('id')
-                self.api.cache_vocabulary_answer(self.username, card_id, 3)
+                self.api.cache_vocabulary_answer(self.profile_name, card_id, 3)
                 self.console.print("✅ [green]Marked as studied[/green]\n")
             elif action == 's':
                 self.console.print("[yellow]Skipped[/yellow]\n")
@@ -389,7 +394,7 @@ class InteractiveStudySession:
         """Submit cached vocabulary answers"""
         self.console.print("📤 Submitting vocabulary session...")
 
-        result = self.api.submit_vocabulary_session(self.username)
+        result = self.api.submit_vocabulary_session(self.profile_name)
 
         if result.get('success'):
             count = result.get('processed_count', 0)
@@ -415,7 +420,7 @@ class InteractiveStudySession:
 
     def _show_stats(self):
         """Show current session statistics"""
-        counts = self.api.get_deck_counts(self.deck_id, self.username)
+        counts = self.api.get_deck_counts(self.deck_id, self.profile_name)
         if counts:
             display_stats(self.console, counts)
         else:
@@ -428,10 +433,10 @@ class InteractiveStudySession:
 
     def _cleanup(self):
         """Cleanup on exit"""
-        if self.username:
+        if self.profile_name:
             self.console.print("\n🔄 Closing session...")
             try:
-                self.api.close_all_sessions(self.username)
+                self.api.close_all_sessions(self.profile_name)
                 self.console.print("✅ Session closed")
             except Exception as e:
                 logger.error(f"Error closing session: {e}")
