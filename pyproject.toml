@@ -16,7 +16,6 @@ dependencies = [
     "anthropic",
     "nltk",
     "pydantic",
-    "typing",
     "ollama",
     "wikipedia",
     "fal-client",
