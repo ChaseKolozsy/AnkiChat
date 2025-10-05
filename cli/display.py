@@ -140,24 +140,31 @@ class CardDisplay:
     def _paginate_content(self, content: str) -> List[str]:
         """Split content into pages"""
         lines = content.split('\n')
+        print(f"DEBUG: Total lines: {len(lines)}, Lines per page: {self.lines_per_page}")
 
         if len(lines) <= self.lines_per_page:
+            print("DEBUG: Content fits on one page")
             return [content]
 
         pages = []
         for i in range(0, len(lines), self.lines_per_page):
             page_lines = lines[i:i + self.lines_per_page]
-            pages.append('\n'.join(page_lines))
+            page_content = '\n'.join(page_lines)
+            pages.append(page_content)
+            print(f"DEBUG: Created page {len(pages)} with {len(page_lines)} lines")
 
+        print(f"DEBUG: Total pages created: {len(pages)}")
         return pages
 
     def _show_current_page(self, side: str, color: str):
         """Show current page of card"""
         if not self.pages:
+            print("DEBUG: No pages to display")
             return
 
         page_content = self.pages[self.current_page]
         page_indicator = f"Page {self.current_page + 1}/{self.total_pages}" if self.total_pages > 1 else ""
+        print(f"DEBUG: Displaying page {self.current_page + 1}/{self.total_pages}")
 
         title = f"CARD - {side}"
         if page_indicator:
