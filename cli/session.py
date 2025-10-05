@@ -405,21 +405,25 @@ class InteractiveStudySession:
 
     def _handle_vocabulary_action(self, action: str, card: Dict[str, Any]):
         """Handle user action in vocabulary mode"""
-        if action in ['', '3']:
-            # Mark as studied
-            card_id = card.get('card_id') or card.get('id')
-            self.api.cache_vocabulary_answer(self.profile_name, card_id, 3)
-            self.console.print("✅ [green]Marked as studied[/green]\n")
-
-            # Show updated queue status
-            self._show_vocabulary_queue_status()
-        elif action == 'n':
-            # Navigate to next page (dedicated key, not Enter)
+        if action in ['', 'n']:
+            # Navigate to next page (Enter or n key)
             if self.display.next_page():
                 self.display.display_card_full(card)
                 self._show_vocabulary_actions()
             else:
-                self.console.print("[dim]Already on the last page[/dim]")
+                # At end of card, mark as studied
+                card_id = card.get('card_id') or card.get('id')
+                self.api.cache_vocabulary_answer(self.profile_name, card_id, 3)
+                self.console.print("✅ [green]Marked as studied[/green]\n")
+                # Show updated queue status
+                self._show_vocabulary_queue_status()
+        elif action == '3':
+            # Explicit mark as studied
+            card_id = card.get('card_id') or card.get('id')
+            self.api.cache_vocabulary_answer(self.profile_name, card_id, 3)
+            self.console.print("✅ [green]Marked as studied[/green]\n")
+            # Show updated queue status
+            self._show_vocabulary_queue_status()
         elif action in ['b', 'p']:
             # Navigate to previous page
             if self.display.previous_page():
@@ -555,10 +559,11 @@ class InteractiveStudySession:
 [bold cyan]Vocabulary Mode Help:[/bold cyan]
 
 [bold]Study Commands:[/bold]
-  [yellow]Enter[/yellow]    - Mark card as studied (moves to next card)
+  [yellow]Enter[/yellow]    - Next page, or mark as studied at end
+  [yellow]3[/yellow]        - Explicitly mark as studied
 
 [bold]Navigation:[/bold]
-  [yellow]n[/yellow]        - Next page (when card has multiple pages)
+  [yellow]Enter/n[/yellow]  - Next page (when card has multiple pages)
   [yellow]b/p[/yellow]      - Previous page
 
 [bold]Learning Commands:[/bold]
