@@ -56,7 +56,7 @@ def ensure_server_running(host: str = 'localhost', port: int = 8888) -> str:
                 '--host', host, '--port', str(port)
             ],
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=subprocess.STDOUT,  # Combine stderr with stdout
             text=True
         )
     except Exception as e:
@@ -101,10 +101,8 @@ def ensure_server_running(host: str = 'localhost', port: int = 8888) -> str:
         stdout, stderr = _server_process.communicate()
 
     error_msg = f"Failed to start API server after {max_attempts} seconds.\n"
-    if stderr:
-        error_msg += f"STDERR: {stderr[:500]}\n"
     if stdout:
-        error_msg += f"STDOUT: {stdout[:500]}"
+        error_msg += f"OUTPUT: {stdout[:1000]}"
 
     cleanup_server()
     raise RuntimeError(error_msg)

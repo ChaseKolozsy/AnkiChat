@@ -2165,6 +2165,7 @@ async def login_and_sync_endpoint(request: Request):
                 })
 
     except Exception as e:
+        logger.error(f"Error in login_and_sync: {e}", exc_info=True)
         return JSONResponse({"error": str(e)}, status_code=500)
 
 # Health check endpoint for CLI
