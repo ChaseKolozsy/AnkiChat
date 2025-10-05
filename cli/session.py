@@ -530,22 +530,39 @@ class InteractiveStudySession:
         self.current_mode = 'grammar'
         self.console.print("\n📚 [bold]Grammar Mode[/bold]\n")
 
-        # Restart grammar session (without aggressive cleanup)
+        # Close any existing sessions first
+        close_result = self.api.close_all_sessions(self.profile_name)
+        if close_result.get('success'):
+            self.console.print("[dim]Closed existing sessions[/dim]")
+        else:
+            self.console.print(f"[dim]Note: {close_result.get('error', 'Could not close sessions')}[/dim]")
+
+        # Complete state reset except for essential info (profile, username, deck)
+        self.current_card = None
+        self.card_flipped = False
+        self.claude_processing = False
+        self.cached_grammar_answer = None
+
+        # Start completely fresh grammar session
         if self.deck_id:
+            self.console.print(f"[dim]Starting fresh grammar session for deck: {self.deck_name} (ID: {self.deck_id})[/dim]")
             result = self.api.start_dual_session(self.profile_name, self.deck_id)
             if result.get('success') and result.get('current_card'):
                 self.current_card = result['current_card']
-                self.card_flipped = False  # Reset flip state
+                self.card_flipped = False
 
-                # Display the refreshed grammar card
+                # Display the fresh grammar card
                 self._display_card_front()
+                remaining = result.get('remaining', 'unknown')
+                self.console.print(f"[green]✅ Fresh grammar session started successfully[/green]")
+                self.console.print(f"[dim]Cards remaining in session: {remaining}[/dim]")
             else:
-                self.console.print("[yellow]No active grammar session found[/yellow]")
-                # Reset to default card display if no session
+                error_msg = result.get('error', 'Unknown error')
+                self.console.print(f"[red]❌ Failed to start grammar session: {error_msg}[/red]")
                 self.current_card = None
                 self.card_flipped = False
         else:
-            self.console.print("[yellow]No deck selected[/yellow]")
+            self.console.print("[red]No deck selected - cannot start grammar session[/red]")
             self.current_card = None
             self.card_flipped = False
 
