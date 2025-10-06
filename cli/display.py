@@ -281,7 +281,7 @@ In Progress: {status.get('in_progress', 0)}
 def show_help(console: Console):
     """Display help with keyboard shortcuts"""
     help_text = """
-[bold cyan]Keyboard Shortcuts:[/bold cyan]
+[bold cyan]Grammar Mode Help:[/bold cyan]
 
 [bold]Study Commands:[/bold]
   [yellow]f[/yellow]        - Flip card to show back
@@ -293,15 +293,20 @@ def show_help(console: Console):
 [bold]Navigation:[/bold]
   [yellow]Enter/n[/yellow]  - Next page (when card has multiple pages)
   [yellow]b/p[/yellow]      - Previous page
-  [yellow]Enter[/yellow]   - Next page (alternative key)
 
 [bold]Session Commands:[/bold]
-  [yellow]d[/yellow]        - Define words with Claude SDK
-  [yellow]v[/yellow]        - Switch to vocabulary mode
-  [yellow]g[/yellow]        - Switch to grammar mode
-  [yellow]s[/yellow]        - Show session statistics
-  [yellow]h[/yellow]        - Show this help
-  [yellow]q[/yellow]        - Quit session
+  [yellow]d[/yellow]               - Define words with Claude SDK (60s timeout)
+  [yellow]v[/yellow]               - Switch to vocabulary mode
+  [yellow]g[/yellow]               - Switch to grammar mode
+  [yellow]retry-grammar[/yellow]  - Retry grammar session if recovery timed out
+  [yellow]s[/yellow]               - Show session statistics
+  [yellow]h/?[/yellow]             - Show this help
+  [yellow]q[/yellow]               - Quit session
+
+[bold]Timeout & Recovery:[/bold]
+• Word definition requests timeout after 60 seconds
+• Grammar session recovery times out after 30 seconds
+• Use retry commands if operations timeout
 
 [dim]Tip: You must flip the card before you can answer it![/dim]
     """.strip()

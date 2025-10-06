@@ -482,7 +482,7 @@ class InteractiveStudySession:
         pagination_hint = ""
         if self.display.total_pages > 1:
             pagination_hint = "  [n/p] Next/Prev page"
-        self.console.print(f"[dim][Enter] Studied{pagination_hint}  [d] Define  [g] Grammar  [h] Help  [q] Quit[/dim]\n")
+        self.console.print(f"[dim][Enter] Studied{pagination_hint}  [d] Define  [r] Retry  [g] Grammar  [h] Help  [q] Quit[/dim]\n")
 
     def _handle_vocabulary_action(self, action: str, card: Dict[str, Any]):
         """Handle user action in vocabulary mode"""
