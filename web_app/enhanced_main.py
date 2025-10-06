@@ -1488,8 +1488,32 @@ async def home(request: Request):
             if (pollingInterval) return;
 
             let lastQueueLength = 0;
+            let pollStartTime = Date.now();
+            let pollTimeout = 60000; // 60 seconds timeout
+            let pollCount = 0;
+
             pollingInterval = setInterval(async () => {
                 try {
+                    pollCount++;
+                    const elapsed = Date.now() - pollStartTime;
+
+                    // Check for timeout
+                    if (elapsed > pollTimeout) {
+                        console.warn('Polling timeout reached after ' + (elapsed / 1000) + ' seconds');
+                        clearInterval(pollingInterval);
+                        pollingInterval = null;
+
+                        // Show timeout message to user
+                        const statusDiv = document.getElementById('vocabulary-status');
+                        if (statusDiv) {
+                            statusDiv.innerHTML = '<span style="color: #ffc107;">⏱️ Polling timed out. Click "Retry Poll" to check again.</span>';
+                        }
+
+                        // Show retry button
+                        showRetryPollButton();
+                        return;
+                    }
+
                     const response = await fetch('/api/vocabulary-queue-status', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -1503,6 +1527,8 @@ async def home(request: Request):
                         // Show study interface when vocabulary cards are detected
                         if (result.queue_status.queue_length > 0) {
                             document.getElementById('study-interface').classList.remove('hidden');
+                            // Reset timeout when cards are found
+                            pollStartTime = Date.now();
                         }
 
                         const vocabDisplayHidden = document.getElementById('vocabulary-card-display').classList.contains('hidden');
@@ -1534,6 +1560,48 @@ async def home(request: Request):
                     console.error('Error polling vocabulary queue:', error);
                 }
             }, 3000); // Poll every 3 seconds
+        }
+
+        function showRetryPollButton() {
+            // Create or show retry button
+            let retryBtn = document.getElementById('retry-poll-btn');
+            if (!retryBtn) {
+                retryBtn = document.createElement('button');
+                retryBtn.id = 'retry-poll-btn';
+                retryBtn.textContent = '🔄 Retry Poll';
+                retryBtn.style.cssText = 'padding: 8px 16px; background: #ffc107; color: black; border: none; border-radius: 6px; cursor: pointer; margin: 10px 0;';
+                retryBtn.onclick = retryVocabularyPolling;
+
+                const statusDiv = document.getElementById('vocabulary-status');
+                if (statusDiv && statusDiv.parentNode) {
+                    statusDiv.parentNode.insertBefore(retryBtn, statusDiv.nextSibling);
+                }
+            } else {
+                retryBtn.style.display = 'block';
+            }
+        }
+
+        function retryVocabularyPolling() {
+            console.log('Retrying vocabulary polling...');
+
+            // Hide retry button
+            const retryBtn = document.getElementById('retry-poll-btn');
+            if (retryBtn) {
+                retryBtn.style.display = 'none';
+            }
+
+            // Update status
+            const statusDiv = document.getElementById('vocabulary-status');
+            if (statusDiv) {
+                statusDiv.innerHTML = '<span style="color: #0084ff;">🔄 Retrying poll...</span>';
+            }
+
+            // Restart polling
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+                pollingInterval = null;
+            }
+            startVocabularyPolling();
         }
 
         async function getNextVocabularyCard() {

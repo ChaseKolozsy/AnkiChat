@@ -21,6 +21,7 @@ from cli.display import (
     display_vocabulary_queue,
     show_help
 )
+from cli.polling_manager import PollingManager, PollConfig, VocabularyCardDetector
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,10 @@ class InteractiveStudySession:
         self.current_mode = 'grammar'  # 'grammar' or 'vocabulary'
         self.claude_processing = False
         self.cached_grammar_answer: Optional[Dict[str, Any]] = None
+
+        # Polling manager for vocabulary card detection
+        self.vocab_poll_manager: Optional[PollingManager] = None
+        self.vocab_deck_id = 1  # Default deck for vocabulary cards
 
     def run(self, deck_id: Optional[int] = None):
         """
@@ -199,6 +204,16 @@ class InteractiveStudySession:
             self._switch_to_vocabulary()
         elif action == 'g':
             self._switch_to_grammar()
+        elif action == 'retry-grammar':
+            # Manual retry for grammar session recovery
+            self.console.print("[cyan]🔄 Retrying grammar session recovery...[/cyan]")
+            recovery_result = self._recover_grammar_session()
+            if recovery_result == 'success':
+                self.console.print(f"[green]✅ Grammar session recovered successfully[/green]")
+            elif recovery_result == 'timeout':
+                self.console.print(f"[yellow]⏱️  Recovery timed out again[/yellow]")
+            else:
+                self.console.print(f"[red]❌ Recovery failed[/red]")
         elif action == 's':
             self._show_stats()
         elif action == 'h' or action == '?':
@@ -471,7 +486,25 @@ class InteractiveStudySession:
 
     def _handle_vocabulary_action(self, action: str, card: Dict[str, Any]):
         """Handle user action in vocabulary mode"""
-        if action in ['', 'n']:
+        if action == 'r':
+            # Retry polling for vocabulary cards after timeout
+            if self._retry_vocabulary_poll():
+                # New cards found - reload from queue
+                new_card_result = self.api.get_next_vocabulary_card(self.profile_name)
+                if new_card_result.get('success') and new_card_result.get('card'):
+                    new_card = new_card_result['card']
+                    self.current_card = new_card
+                    self.display.reset_pagination()
+                    self.display.display_card_full(new_card)
+                    self._show_vocabulary_actions()
+                    self.console.print("[green]✅ New vocabulary card loaded after retry![/green]")
+                    return 'new_card'
+                else:
+                    self.console.print("[yellow]No cards in queue after retry[/yellow]")
+            else:
+                self.console.print("[yellow]Retry did not find new cards[/yellow]")
+            return None  # Stay on current card
+        elif action in ['', 'n']:
             # Enter or 'n' key - show next page
             if self.display.next_page():
                 self.display.display_card_full(card, force_refresh=False)
@@ -549,7 +582,7 @@ class InteractiveStudySession:
             self.console.print(f"[red]Failed to submit session: {error_msg}[/red]")
 
     def _switch_to_grammar(self):
-        """Switch back to grammar study mode"""
+        """Switch back to grammar study mode with timeout handling"""
         if self.current_mode == 'grammar':
             self.console.print("[yellow]Already in grammar mode[/yellow]")
             return
@@ -557,41 +590,111 @@ class InteractiveStudySession:
         self.current_mode = 'grammar'
         self.console.print("\n📚 [bold]Grammar Mode[/bold]\n")
 
-        # Close any existing sessions first
-        close_result = self.api.close_all_sessions(self.profile_name)
-        if close_result.get('success'):
-            self.console.print("[dim]Closed existing sessions[/dim]")
+        # Attempt to recover or start fresh grammar session with timeout
+        recovery_result = self._recover_grammar_session()
+
+        if recovery_result == 'timeout':
+            self.console.print(Panel(
+                "[yellow]⏱️  Session recovery timed out.[/yellow]\n"
+                "The session may be in an inconsistent state.\n"
+                "[cyan]Type 'retry-grammar' to try again.[/cyan]",
+                title="Recovery Timeout",
+                border_style="yellow"
+            ))
+        elif recovery_result == 'success':
+            self.console.print(f"[green]✅ Grammar session ready[/green]")
         else:
-            self.console.print(f"[dim]Note: {close_result.get('error', 'Could not close sessions')}[/dim]")
+            self.console.print(f"[red]❌ Could not start grammar session[/red]")
 
-        # Complete state reset except for essential info (profile, username, deck)
-        self.current_card = None
-        self.card_flipped = False
-        self.claude_processing = False
-        self.cached_grammar_answer = None
+    def _recover_grammar_session(self, timeout_seconds: int = 30) -> str:
+        """
+        Attempt to recover or start fresh grammar session with timeout
 
-        # Start completely fresh grammar session
-        if self.deck_id:
-            self.console.print(f"[dim]Starting fresh grammar session for deck: {self.deck_name} (ID: {self.deck_id})[/dim]")
-            result = self.api.start_dual_session(self.profile_name, self.deck_id)
-            if result.get('success') and result.get('current_card'):
-                self.current_card = result['current_card']
-                self.card_flipped = False
+        Args:
+            timeout_seconds: Max time to wait for session recovery
 
-                # Display the fresh grammar card
-                self._display_card_front()
-                remaining = result.get('remaining', 'unknown')
-                self.console.print(f"[green]✅ Fresh grammar session started successfully[/green]")
-                self.console.print(f"[dim]Cards remaining in session: {remaining}[/dim]")
+        Returns:
+            'success', 'timeout', or 'error'
+        """
+        import signal
+
+        class TimeoutError(Exception):
+            pass
+
+        def timeout_handler(signum, frame):
+            raise TimeoutError("Session recovery timed out")
+
+        # Set timeout for session recovery
+        old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+        signal.alarm(timeout_seconds)
+
+        try:
+            # Close any existing sessions first
+            self.console.print("[dim]Closing existing sessions...[/dim]")
+            close_result = self.api.close_all_sessions(self.profile_name)
+            if close_result.get('success'):
+                self.console.print("[dim]✓ Closed existing sessions[/dim]")
             else:
-                error_msg = result.get('error', 'Unknown error')
-                self.console.print(f"[red]❌ Failed to start grammar session: {error_msg}[/red]")
-                self.current_card = None
-                self.card_flipped = False
-        else:
-            self.console.print("[red]No deck selected - cannot start grammar session[/red]")
+                self.console.print(f"[dim]Note: {close_result.get('error', 'Could not close sessions')}[/dim]")
+
+            # Complete state reset except for essential info (profile, username, deck)
             self.current_card = None
             self.card_flipped = False
+            self.claude_processing = False
+            self.cached_grammar_answer = None
+
+            # Start completely fresh grammar session
+            if self.deck_id:
+                self.console.print(f"[dim]Starting fresh grammar session for deck: {self.deck_name} (ID: {self.deck_id})[/dim]")
+                result = self.api.start_dual_session(self.profile_name, self.deck_id)
+
+                if result.get('success') and result.get('current_card'):
+                    self.current_card = result['current_card']
+                    self.card_flipped = False
+
+                    # Display the fresh grammar card
+                    self._display_card_front()
+                    remaining = result.get('remaining', 'unknown')
+                    self.console.print(f"[dim]Cards remaining in session: {remaining}[/dim]")
+
+                    # Cancel alarm
+                    signal.alarm(0)
+                    signal.signal(signal.SIGALRM, old_handler)
+                    return 'success'
+                else:
+                    error_msg = result.get('error', 'Unknown error')
+                    self.console.print(f"[red]Failed to start grammar session: {error_msg}[/red]")
+                    self.current_card = None
+                    self.card_flipped = False
+
+                    # Cancel alarm
+                    signal.alarm(0)
+                    signal.signal(signal.SIGALRM, old_handler)
+                    return 'error'
+            else:
+                self.console.print("[red]No deck selected - cannot start grammar session[/red]")
+                self.current_card = None
+                self.card_flipped = False
+
+                # Cancel alarm
+                signal.alarm(0)
+                signal.signal(signal.SIGALRM, old_handler)
+                return 'error'
+
+        except TimeoutError:
+            # Timeout occurred
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old_handler)
+            logger.warning("Grammar session recovery timed out")
+            return 'timeout'
+
+        except Exception as e:
+            # Other error
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old_handler)
+            logger.error(f"Error during grammar session recovery: {e}")
+            self.console.print(f"[red]Recovery error: {e}[/red]")
+            return 'error'
 
     def _show_stats(self):
         """Show current session statistics"""
@@ -622,7 +725,8 @@ class InteractiveStudySession:
         if result.get('success'):
             self.console.print(Panel(
                 "[cyan]Claude is generating vocabulary definitions...[/cyan]\n"
-                "New cards will be added to the vocabulary queue.",
+                "New cards will be added to the vocabulary queue.\n"
+                "[dim]Polling will timeout after 60 seconds if cards aren't created.[/dim]",
                 title="Claude SDK Processing",
                 border_style="purple"
             ))
@@ -630,33 +734,44 @@ class InteractiveStudySession:
             # Set claude_processing flag (for grammar mode behavior)
             self.claude_processing = True
 
-            # Wait a moment for processing, then check queue status
-            import time
-            time.sleep(2)  # Give it a moment to process
+            # Use polling manager to wait for new cards with timeout
+            poll_result = self._poll_for_new_vocabulary_cards()
 
-            # Check and display updated queue status
-            self._show_vocabulary_queue_status()
-
-            # For LIFO stack behavior, requeue current card then get the newly added card
-            # Requeue the current card before getting the new one (like web app)
-            if card:
-                requeue_result = self.api.requeue_vocabulary_card(self.profile_name, card)
-                if not requeue_result.get('success'):
-                    logger.warning(f"Failed to requeue current card: {requeue_result.get('error')}")
-
-            new_card_result = self.api.get_next_vocabulary_card(self.profile_name)
-            if new_card_result.get('success') and new_card_result.get('card'):
-                # Display the newly created card immediately (top of stack)
-                new_card = new_card_result['card']
-                self.current_card = new_card
-                self.display.reset_pagination()
-                self.display.display_card_full(new_card)
+            if poll_result == 'timeout':
+                self.console.print(Panel(
+                    "[yellow]⏱️  Polling timed out waiting for new vocabulary cards.[/yellow]\n"
+                    "The cards may still be created in the background.\n"
+                    "[cyan]Press 'r' to retry checking for new cards.[/cyan]",
+                    title="Timeout",
+                    border_style="yellow"
+                ))
+                # Stay on current card
                 self._show_vocabulary_actions()
-                self.console.print("[green]✅ New vocabulary card ready (top of stack)![/green]")
-                return 'new_card_ready'  # Signal that we've switched to a new card
+                return None
+            elif poll_result == 'found':
+                # For LIFO stack behavior, requeue current card then get the newly added card
+                if card:
+                    requeue_result = self.api.requeue_vocabulary_card(self.profile_name, card)
+                    if not requeue_result.get('success'):
+                        logger.warning(f"Failed to requeue current card: {requeue_result.get('error')}")
+
+                new_card_result = self.api.get_next_vocabulary_card(self.profile_name)
+                if new_card_result.get('success') and new_card_result.get('card'):
+                    # Display the newly created card immediately (top of stack)
+                    new_card = new_card_result['card']
+                    self.current_card = new_card
+                    self.display.reset_pagination()
+                    self.display.display_card_full(new_card)
+                    self._show_vocabulary_actions()
+                    self.console.print("[green]✅ New vocabulary card ready (top of stack)![/green]")
+                    return 'new_card_ready'  # Signal that we've switched to a new card
+                else:
+                    self.console.print("[yellow]No new vocabulary card available in queue[/yellow]")
+                    self._show_vocabulary_actions()
+                    return None
             else:
-                self.console.print("[yellow]No new vocabulary card available yet[/yellow]")
-                # Show current card again
+                # Error or other issue
+                self.console.print("[yellow]Could not detect new cards[/yellow]")
                 self._show_vocabulary_actions()
                 return None
 
@@ -664,6 +779,98 @@ class InteractiveStudySession:
             error_msg = result.get('error', 'Unknown error')
             self.console.print(f"[red]Failed to request definitions: {error_msg}[/red]")
             return None
+
+    def _poll_for_new_vocabulary_cards(self) -> str:
+        """
+        Poll for new vocabulary cards with timeout
+
+        Returns:
+            'found' if cards detected, 'timeout' if timed out, 'error' on error
+        """
+        # Initialize polling manager
+        if self.vocab_poll_manager is None:
+            self.vocab_poll_manager = PollingManager(PollConfig(timeout_seconds=60, poll_interval_seconds=2.0))
+        else:
+            self.vocab_poll_manager.reset()
+
+        # Get baseline card IDs from vocabulary deck (deck ID 1)
+        try:
+            from AnkiClient.src.operations.deck_ops import get_cards_in_deck
+
+            def get_cards_fn(deck_id: int, username: str):
+                return get_cards_in_deck(deck_id=deck_id, username=username)
+
+            detector = VocabularyCardDetector(get_cards_fn)
+            _, baseline_ids = detector.get_current_cards(self.vocab_deck_id, self.profile_name)
+            self.vocab_poll_manager.record_baseline(baseline_ids)
+
+            self.console.print(f"[dim]Baseline: {len(baseline_ids)} cards in vocabulary deck[/dim]")
+
+        except Exception as e:
+            logger.error(f"Failed to get baseline cards: {e}")
+            self.console.print(f"[red]Error getting baseline: {e}[/red]")
+            return 'error'
+
+        # Poll for new cards
+        while True:
+            should_continue, reason = self.vocab_poll_manager.should_continue_polling()
+
+            if not should_continue:
+                if self.vocab_poll_manager.state.timed_out:
+                    self.console.print(f"[yellow]⏱️  {reason}[/yellow]")
+                    return 'timeout'
+                else:
+                    logger.warning(f"Polling stopped: {reason}")
+                    return 'error'
+
+            # Check for new cards
+            try:
+                _, current_ids = detector.get_current_cards(self.vocab_deck_id, self.profile_name)
+                new_ids = self.vocab_poll_manager.check_for_new_cards(current_ids)
+
+                if new_ids:
+                    self.console.print(f"[green]✅ Detected {len(new_ids)} new card(s)![/green]")
+                    self.vocab_poll_manager.mark_completed()
+                    return 'found'
+
+                # Show progress
+                status = self.vocab_poll_manager.get_status_summary()
+                self.console.print(
+                    f"[dim]Checking... {status['elapsed_seconds']}s / {status['poll_count']} checks "
+                    f"(timeout in {status['remaining_seconds']}s)[/dim]",
+                    end='\r'
+                )
+
+            except Exception as e:
+                logger.error(f"Error during polling: {e}")
+                self.console.print(f"\n[red]Polling error: {e}[/red]")
+                return 'error'
+
+            # Wait before next check
+            self.vocab_poll_manager.wait_poll_interval()
+
+    def _retry_vocabulary_poll(self) -> bool:
+        """
+        Retry polling for vocabulary cards after timeout
+
+        Returns:
+            True if new cards found, False otherwise
+        """
+        if self.vocab_poll_manager is None:
+            self.console.print("[yellow]No active polling session to retry[/yellow]")
+            return False
+
+        can_retry, reason = self.vocab_poll_manager.can_retry()
+        if not can_retry:
+            self.console.print(f"[yellow]Cannot retry: {reason}[/yellow]")
+            return False
+
+        self.console.print(f"[cyan]🔄 Retrying vocabulary card detection... ({reason})[/cyan]")
+        self.vocab_poll_manager.retry()
+
+        # Re-poll
+        result = self._poll_for_new_vocabulary_cards()
+        return result == 'found'
 
     def _show_vocabulary_queue_status(self):
         """Display current vocabulary queue status"""
@@ -699,6 +906,7 @@ class InteractiveStudySession:
 
 [bold]Learning Commands:[/bold]
   [yellow]d[/yellow]        - Define words from this card with Claude SDK
+  [yellow]r[/yellow]        - Retry checking for new cards (after timeout)
   [yellow]g[/yellow]        - Switch back to grammar mode
   [yellow]h/?[/yellow]      - Show this help
   [yellow]q[/yellow]        - Quit session
@@ -708,6 +916,7 @@ class InteractiveStudySession:
 • Press Enter when done reading to mark as studied
 • Define unfamiliar words for better learning
 • New cards are added to TOP of stack (LIFO) - newest first
+• Polling times out after 60 seconds - use 'r' to retry
 • Switch between grammar and vocabulary modes as needed
 • All studied cards are cached for batch submission
         """.strip()
