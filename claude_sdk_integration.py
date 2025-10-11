@@ -167,7 +167,14 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
    - NO English summaries or explanations
 
 2. **DEFINITION REQUIREMENTS**:
-   - Use ONLY Hungarian words from Pimsleur Level 1 vocabulary
+   - **CRITICAL: DEFINE THE LEMMA/STEM, NOT CONJUGATIONS**
+     - Always define the base form/root/stem of the word (the lemma)
+     - Do NOT define conjugated forms, inflections, or derived forms
+     - Example: If asked to define "mentek", define "menni" (the infinitive lemma)
+     - Example: If asked to define "szép", define "szép" (the base adjective)
+     - Example: If asked to define "házak", define "ház" (the singular noun)
+     - Example: If asked to define "olvastam", define "olvasni" (the infinitive)
+   - Use ONLY Hungarian words from basic A1 Vocabulary
    - Use creative definitions with emojis, symbols, mathematical notation
    - Create multiple definitions/approaches
    - AVOID English loan words (komputer→számítógép, hotel→szálloda)
@@ -183,10 +190,10 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
    - note_type: "Hungarian Vocabulary Note"
    - deck_id: 1
    - fields: {
-       "Word": "[THE_HUNGARIAN_WORD_ONLY]",
+       "Word": "[THE_LEMMA_BASE_FORM_ONLY]",
        "Definition": "[YOUR_CREATIVE_DEFINITION_WITH_HTML_BR_TAGS]",
        "Grammar Code": "[IF_APPLICABLE_FROM_CONTEXT]",
-       "Example Sentence": "[CREATE_EXAMPLE_USING_THE_WORD]"
+       "Example Sentence": "[CREATE_EXAMPLE_USING_THE_LEMMA_BASE_FORM]"
    }
    - tags: ["vocabulary", "mit-jelent", "from-context"]
 

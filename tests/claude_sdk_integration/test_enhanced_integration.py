@@ -267,9 +267,13 @@ async def test_define_with_context_integration():
     required_elements = [
         "CONTEXT SOURCE IDENTIFICATION",
         "Hungarian",
-        "Pimsleur Level 1",
+        "basic A1 Vocabulary",
         "creative definitions",
         "emojis",
+        "LEMMA",
+        "STEM",
+        "base form",
+        "conjugation",
         "mcp__anki-api__create_card"
     ]
 
