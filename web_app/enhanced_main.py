@@ -397,7 +397,7 @@ async def home(request: Request):
                 <h3 style="color: #ff6b35; margin-bottom: 10px;">📖 Vocabulary Deck (For New Cards)</h3>
                 <div id="vocab-deck-list"></div>
             </div>
-            <button class="btn" id="start-study" onclick="startDualSession()" disabled>Start Enhanced Study Session</button>
+            <button class="btn" id="start-study" onclick="startGrammarSession()" disabled>Start Grammar Session</button>
         </div>
 
         <!-- Dual Study Sessions -->
@@ -932,7 +932,7 @@ async def home(request: Request):
         }
 
         // Enhanced Study Session Functions
-        async function startDualSession() {
+        async function startGrammarSession() {
             if (!selectedGrammarDeck || !selectedVocabularyDeck || !currentUser) {
                 alert('Please select both a grammar deck and a vocabulary deck');
                 return;
@@ -946,14 +946,13 @@ async def home(request: Request):
                     console.warn('Failed to fetch initial counts, proceeding anyway');
                 }
 
-                // Start grammar session with both deck IDs
-                const response = await fetch('/api/start-dual-session', {
+                // Start only grammar session initially
+                const response = await fetch('/api/start-session', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         username: currentUser,
-                        grammar_deck_id: selectedGrammarDeck.id,
-                        vocabulary_deck_id: selectedVocabularyDeck.id
+                        deck_id: selectedGrammarDeck.id
                     })
                 });
 
@@ -970,8 +969,14 @@ async def home(request: Request):
                     // Display grammar card
                     displayGrammarCard(result.current_card);
 
-                    // Load vocabulary layers (new layer-based system)
-                    await refreshLayers();
+                    // Initialize vocabulary session as waiting - no active setup yet
+                    document.getElementById('vocab-status').textContent = 'Waiting for vocabulary definitions...';
+                    document.getElementById('vocab-status').className = 'session-status status-waiting';
+                    document.getElementById('current-layer-tag').textContent = 'None';
+                    document.getElementById('vocab-cards-remaining').textContent = '0';
+                    document.getElementById('vocab-controls').classList.add('hidden');
+
+                    console.log('Grammar session started. Vocabulary session will start when Claude SDK finishes creating definitions.');
 
                     // Render the cached counts (no fetching during session)
                     renderCachedCounts();
