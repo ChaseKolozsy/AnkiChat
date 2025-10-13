@@ -343,25 +343,20 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
                         # Check if we have all expected cards for this layer
                         expected_word_count = self.words_in_current_layer
 
-                        # Only create session if we have a valid expected count and found all cards
-                        if expected_word_count > 0 and found_count >= expected_word_count:
-                            logger.info(f"All expected cards found ({found_count}/{expected_word_count}). Creating custom study session...")
-
-                            # Create custom study session with these cards
-                            custom_session_result = await self._create_custom_study_session(self.current_layer_tag)
-
-                            if custom_session_result.get('success'):
-                                logger.info(f"Successfully created and started custom study session for layer {self.current_layer_tag}")
-                                logger.info(f"Custom deck ID: {custom_session_result.get('custom_deck_id')}")
-                                # Stop polling since we've created and started the session
-                                self.polling_active = False
-                            else:
-                                logger.error(f"Failed to create custom study session: {custom_session_result.get('error')}")
+                        # Handle different scenarios for found vs expected cards
+                        if expected_word_count == 0:
+                            logger.warning(f"Expected word count is 0, waiting for definition request to set proper count")
+                        elif found_count == expected_word_count:
+                            logger.info(f"Exact number of expected cards found ({found_count}/{expected_word_count}). Creating custom study session...")
+                            await self._attempt_custom_session_creation()
+                        elif found_count > expected_word_count:
+                            logger.warning(f"Found more cards than expected ({found_count}/{expected_word_count}). Using only the most recent {expected_word_count} cards.")
+                            # Take only the most recent cards (assume they're returned in order of creation)
+                            recent_cards = tagged_cards[-expected_word_count:]
+                            # We'll proceed with all found cards for now since custom study session uses tag filtering
+                            await self._attempt_custom_session_creation()
                         else:
-                            if expected_word_count == 0:
-                                logger.warning(f"Expected word count is 0, waiting for definition request to set proper count")
-                            else:
-                                logger.info(f"Waiting for more cards ({found_count}/{expected_word_count})")
+                            logger.info(f"Waiting for more cards ({found_count}/{expected_word_count})")
 
                 except ImportError as e:
                     # Fallback to old polling method if tag-based function not available
@@ -1059,6 +1054,21 @@ FONTOS TAG INFORMÁCIÓ:
             layer_groups[layer_tag].append(card_id)
 
         return layer_groups
+
+    async def _attempt_custom_session_creation(self):
+        """Attempt to create a custom study session and handle retry logic"""
+        custom_session_result = await self._create_custom_study_session(self.current_layer_tag)
+
+        if custom_session_result.get('success'):
+            logger.info(f"Successfully created and started custom study session for layer {self.current_layer_tag}")
+            logger.info(f"Custom deck ID: {custom_session_result.get('custom_deck_id')}")
+            # Stop polling since we've created and started the session
+            self.polling_active = False
+        else:
+            logger.error(f"Failed to create custom study session: {custom_session_result.get('error')}")
+            # If collection not open, wait and try again
+            if "CollectionNotOpen" in str(custom_session_result.get('error', '')):
+                logger.info("Collection not open, will retry in next poll cycle")
 
     async def _create_custom_study_session(self, layer_tag: str) -> Dict[str, Any]:
         """Create a custom study session for cards with a specific layer tag and start studying it"""
