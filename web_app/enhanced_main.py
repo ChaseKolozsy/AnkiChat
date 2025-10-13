@@ -1402,6 +1402,12 @@ async def home(request: Request):
                     document.getElementById('claude-status').classList.remove('hidden');
                     grammarSession.paused = true;
 
+                    // Store the custom study deck ID if returned by Claude SDK
+                    if (result.custom_study_deck_id) {
+                        vocabularySession.currentCustomDeckId = result.custom_study_deck_id;
+                        console.log(`Stored custom study deck ID: ${result.custom_study_deck_id}`);
+                    }
+
                     console.log(`Successfully sent vocabulary definition request with layer tag: ${layerTag}`);
                     console.log('Claude Code will create vocabulary cards with this layer tag');
 
@@ -2288,6 +2294,16 @@ async def request_definitions(request: Request):
         # Add info that session was closed
         if result.get('success'):
             result['study_session_closed_by_web_ui'] = True
+
+        # Try to get the custom study deck ID if it was created
+        try:
+            # Check if Claude SDK created a custom study session and get its deck ID
+            # This should be available in the Claude SDK integration after creating vocabulary cards
+            if hasattr(claude_integration, 'last_custom_study_deck_id'):
+                result['custom_study_deck_id'] = claude_integration.last_custom_study_deck_id
+                logger.info(f"Returning custom study deck ID: {claude_integration.last_custom_study_deck_id}")
+        except Exception as e:
+            logger.warning(f"Could not get custom study deck ID: {e}")
 
         return JSONResponse(result)
 
