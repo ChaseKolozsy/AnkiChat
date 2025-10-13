@@ -554,6 +554,9 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
             self.layer_word_counts[layer_tag] = len(words)
             self.words_in_current_layer = len(words)
 
+            # Set current_layer_tag so polling uses the correct tag
+            self.current_layer_tag = layer_tag
+
             # Get initial card count for this layer tag before Claude SDK starts
             try:
                 from AnkiClient.src.operations.card_ops import get_cards_by_tag_and_state
