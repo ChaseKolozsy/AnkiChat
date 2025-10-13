@@ -488,6 +488,10 @@ async def home(request: Request):
                         </button>
                     </div>
 
+                    <div class="flip-button-container hidden" id="vocab-flip-container">
+                        <button class="btn btn-flip" onclick="flipVocabularyCard()" id="vocab-flip-button">🔄 Flip Card</button>
+                    </div>
+
                     <div class="answer-buttons hidden" id="vocabulary-answers">
                         <button class="btn btn-answer btn-again" onclick="answerVocabularyCard(1)">❌ Again</button>
                         <button class="btn btn-answer btn-hard" onclick="answerVocabularyCard(2)">⚠️ Hard</button>
@@ -498,7 +502,7 @@ async def home(request: Request):
                     <div class="vocab-controls hidden" id="vocab-controls">
                         <button class="btn" onclick="checkVocabularySession()">🔄 Check Session</button>
                         <button class="btn btn-vocabulary" onclick="completeVocabularySession()">
-                            Complete Session
+                            Complete All Layers
                         </button>
                     </div>
                 </div>
@@ -1859,12 +1863,24 @@ async def home(request: Request):
                     // Display the vocabulary card using same logic as grammar
                     displayVocabularyCard(result.card);
 
-                    // Show vocabulary interface
+                    // Show vocabulary interface including flip button
                     document.getElementById('vocabulary-card-display').classList.remove('hidden');
                     document.getElementById('vocab-define-section').classList.remove('hidden');
-                    document.getElementById('vocabulary-answers').classList.remove('hidden');
+                    document.getElementById('vocab-flip-container').classList.remove('hidden');
+                    // Don't show answer buttons until card is flipped
+                    document.getElementById('vocabulary-answers').classList.add('hidden');
+
+                    // Reset flip button state
+                    const flipButton = document.getElementById('vocab-flip-button');
+                    if (flipButton) {
+                        flipButton.textContent = '🔄 Flip Card';
+                        flipButton.disabled = false;
+                    }
 
                     console.log('Successfully started vocabulary study session');
+                } else if (result.no_more_cards || (result.message && result.message.includes('No more cards'))) {
+                    console.log('No cards available in this layer, checking for next layer...');
+                    await checkVocabularySession();
                 } else {
                     console.error('Failed to start vocabulary study session:', result.error || 'Unknown error');
                 }
@@ -1992,6 +2008,57 @@ async def home(request: Request):
             }
         }
 
+        async function flipVocabularyCard() {
+            const flipButton = document.getElementById('vocab-flip-button');
+
+            if (!vocabularySession.isActive || !vocabularySession.currentCard || !vocabularySession.currentCustomDeckId) {
+                alert('No active vocabulary card to flip');
+                return;
+            }
+
+            try {
+                // Disable flip button during request
+                flipButton.disabled = true;
+                flipButton.textContent = '🔄 Flipping...';
+
+                // Call flip action on the current vocabulary session
+                const response = await fetch('/api/study', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        deck_id: vocabularySession.currentCustomDeckId,
+                        action: 'flip',
+                        username: currentUser
+                    })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    // Update the card display with the flipped card
+                    vocabularySession.currentCard = result;
+                    displayVocabularyCard(result);
+
+                    // Update flip button text
+                    flipButton.textContent = '✅ Flipped';
+
+                    // Show answer buttons after successful flip
+                    document.getElementById('vocabulary-answers').classList.remove('hidden');
+
+                    console.log('Vocabulary card flipped successfully');
+                } else {
+                    alert('Error flipping vocabulary card: ' + (result.error || 'Unknown error'));
+                    flipButton.textContent = '🔄 Flip Card';
+                }
+            } catch (error) {
+                console.error('Error flipping vocabulary card:', error);
+                alert('Error flipping vocabulary card: ' + error.message);
+                flipButton.textContent = '🔄 Flip Card';
+            } finally {
+                // Re-enable flip button
+                flipButton.disabled = false;
+            }
+        }
+
         async function answerVocabularyCard(answer) {
             if (!vocabularySession.currentCard) {
                 alert('No current vocabulary card to answer');
@@ -2011,19 +2078,41 @@ async def home(request: Request):
                 });
 
                 const result = await response.json();
-                if (result.success !== false && result.front) {
+                if (result.success && result.card) {
                     // Got next card in current layer
-                    vocabularySession.currentCard = result;
-                    displayVocabularyCard(result);
+                    vocabularySession.currentCard = result.card;
+                    displayVocabularyCard(result.card);
+
+                    // Reset flip button for next card
+                    const flipButton = document.getElementById('vocab-flip-button');
+                    if (flipButton) {
+                        flipButton.textContent = '🔄 Flip Card';
+                        flipButton.disabled = false;
+                    }
+
+                    // Hide answer buttons until next flip
+                    document.getElementById('vocabulary-answers').classList.add('hidden');
 
                     // Update cards remaining count
                     if (vocabularySession.cardsRemaining > 0) {
                         vocabularySession.cardsRemaining--;
                         document.getElementById('vocab-cards-remaining').textContent = vocabularySession.cardsRemaining;
                     }
-                } else if (result.message && result.message.includes('No more cards')) {
+                } else if (result.no_more_cards || (result.message && result.message.includes('No more cards'))) {
                     // Current layer completed - mark as completed and check for next layer
                     console.log(`Layer ${vocabularySession.currentLayer} completed, marking as completed and checking for next layer...`);
+
+                    // Close current custom study session
+                    if (vocabularySession.currentCustomDeckId) {
+                        await fetch('/api/close-custom-study-session', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                deck_id: vocabularySession.currentCustomDeckId,
+                                username: currentUser
+                            })
+                        });
+                    }
 
                     // Mark current layer as completed
                     if (!vocabularySession.completedLayers) {
@@ -2035,14 +2124,16 @@ async def home(request: Request):
                         console.log(`Completed layers now: ${vocabularySession.completedLayers.join(', ')}`);
                     }
 
-                    // Reset current card and check for next layer
+                    // Reset current card and session state
                     vocabularySession.currentCard = null;
                     vocabularySession.isActive = false;
+                    vocabularySession.currentCustomDeckId = null;
                     document.getElementById('vocabulary-card-display').classList.add('hidden');
                     document.getElementById('vocab-define-section').classList.add('hidden');
+                    document.getElementById('vocab-flip-container').classList.add('hidden');
                     document.getElementById('vocabulary-answers').classList.add('hidden');
 
-                    // Check for next layer automatically
+                    // Check for next layer automatically (LIFO - longest/most recent first)
                     await checkVocabularySession();
                 } else {
                     alert('Error answering card: ' + (result.error || 'Unknown error'));
@@ -2174,6 +2265,57 @@ async def home(request: Request):
             } catch (error) {
                 console.error('Error requesting vocabulary definitions:', error);
                 alert('Error requesting vocabulary definitions: ' + error.message);
+            }
+        }
+
+        async function completeVocabularySession() {
+            try {
+                console.log('Completing all vocabulary layers');
+
+                // Close any active vocabulary session
+                if (vocabularySession.currentCustomDeckId) {
+                    await fetch('/api/close-custom-study-session', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            deck_id: vocabularySession.currentCustomDeckId,
+                            username: currentUser
+                        })
+                    });
+                }
+
+                // Reset vocabulary session state completely
+                vocabularySession = {
+                    active: false,
+                    currentLayer: null,
+                    currentCustomDeckId: null,
+                    currentCard: null,
+                    availableLayers: [],
+                    completedLayers: []
+                };
+
+                // Update UI
+                document.getElementById('vocabulary-card-display').classList.add('hidden');
+                document.getElementById('vocab-define-section').classList.add('hidden');
+                document.getElementById('vocab-flip-container').classList.add('hidden');
+                document.getElementById('vocabulary-answers').classList.add('hidden');
+                document.getElementById('vocab-controls').classList.add('hidden');
+                document.getElementById('current-layer-tag').textContent = 'None';
+                document.getElementById('vocab-cards-remaining').textContent = '0';
+                updateSessionStatus('vocab-status', 'All Layers Complete', 'status-waiting');
+
+                alert('All vocabulary layers completed! You can now continue with the grammar session or request new definitions.');
+                console.log('All vocabulary layers marked as complete');
+
+                // Enable cached answer submission if available
+                const submitCachedBtn = document.getElementById('submit-cached-btn');
+                if (submitCachedBtn && cachedGrammarAnswer) {
+                    submitCachedBtn.disabled = false;
+                    console.log('Enabled cached answer submission for grammar session resume');
+                }
+            } catch (error) {
+                console.error('Error completing vocabulary session:', error);
+                alert('Error completing vocabulary session: ' + error.message);
             }
         }
 
@@ -2611,6 +2753,66 @@ async def close_all_sessions(request: Request):
     except Exception as e:
         return JSONResponse({"success": False, "error": str(e)})
 
+@app.post("/api/study")
+async def study_endpoint(request: Request):
+    """Generic study endpoint for both grammar and vocabulary sessions"""
+    try:
+        data = await request.json()
+        deck_id = data.get("deck_id")
+        action = data.get("action")
+        username = data.get("username", "chase")
+
+        if not deck_id or not action:
+            return JSONResponse({"error": "deck_id and action are required"}, status_code=400)
+
+        # Use study_ops to perform the action
+        from AnkiClient.src.operations import study_ops
+
+        result, status_code = study_ops.study(
+            deck_id=deck_id,
+            action=action,
+            username=username
+        )
+
+        if status_code == 200:
+            # Check if this is a "no more cards" message
+            if isinstance(result, dict) and result.get('message') and 'No more cards' in result.get('message', ''):
+                return JSONResponse({
+                    "success": False,
+                    "message": result.get('message'),
+                    "no_more_cards": True
+                })
+
+            # Success - return the card or result
+            response_data = {
+                "success": True if result.get('card_id') or result.get('front') else False,
+            }
+
+            # Handle different response formats from study_ops
+            if action == 'start':
+                response_data['card'] = result
+            elif action == 'flip':
+                response_data['front'] = result.get('front', {})
+                response_data['back'] = result.get('back', {})
+                response_data['ease_options'] = result.get('ease_options', {})
+                response_data['card_id'] = result.get('card_id')
+            elif action in ['1', '2', '3', '4']:
+                # Answer action - return next card
+                if result.get('card_id'):
+                    response_data['card'] = result
+                    response_data['front'] = result.get('front', {})
+                else:
+                    response_data['message'] = 'No more cards in this session'
+                    response_data['no_more_cards'] = True
+
+            return JSONResponse(response_data)
+        else:
+            return JSONResponse({"success": False, "error": str(result)}, status_code=status_code)
+
+    except Exception as e:
+        logger.error(f"Error in /api/study endpoint: {e}")
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+
 @app.post("/api/study/counts")
 async def get_study_counts_endpoint(request: Request):
     """Get study counts for a specific deck"""
@@ -2812,47 +3014,56 @@ async def get_cards_by_tag_and_state_endpoint(request: Dict[str, Any]):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 @app.post("/api/create-custom-study-session")
-async def create_custom_study_session(request: Dict[str, Any]):
+async def create_custom_study_session_endpoint(request: Request):
     """Create custom study session for a specific layer"""
     try:
-        deck_id = request.get('deck_id')
-        username = request.get('username')
-        tag = request.get('tag')
-        card_limit = request.get('card_limit', 100)
+        data = await request.json()
+        deck_id = data.get('deck_id')
+        username = data.get('username')
+        tag = data.get('tag')
+        card_limit = data.get('card_limit', 100)
 
         if not deck_id or not username or not tag:
             return JSONResponse({"error": "deck_id, username, and tag are required"}, status_code=400)
 
         # Create custom study parameters for the layer
         custom_study_params = {
-            "new_limit_delta": card_limit,
+            "new_limit_delta": 0,
             "cram": {
-                "kind": "CRAM_KIND_DUE",
+                "kind": "CRAM_KIND_NEW",  # Study new cards with this tag
                 "card_limit": card_limit,
                 "tags_to_include": [tag],
                 "tags_to_exclude": []
             }
         }
 
-        # Create the custom study session
-        result_data, status_code = create_custom_study_session(deck_id=deck_id, username=username, custom_study_params=custom_study_params)
+        # Use study_ops to create the custom study session
+        from AnkiClient.src.operations import study_ops
 
-        if status_code == 200:
-            result = {'success': True, 'created_deck_id': result_data.get('created_deck_id')}
-        else:
-            result = {'success': False, 'error': str(result_data)}
+        result_data, status_code = study_ops.create_custom_study_session(
+            deck_id=deck_id,
+            username=username,
+            custom_study_params=custom_study_params
+        )
 
-        if result.get('success'):
+        if status_code == 200 and result_data.get('created_deck_id'):
+            custom_deck_id = result_data.get('created_deck_id')
+            logger.info(f"Created custom study deck {custom_deck_id} for layer {tag}")
+
             return JSONResponse({
                 "success": True,
-                "session_deck_id": result.get('created_deck_id', deck_id),
+                "custom_study_deck_id": custom_deck_id,
+                "session_deck_id": custom_deck_id,
                 "message": f"Created custom study session for layer {tag}"
             })
         else:
-            return JSONResponse({"error": result.get('error', 'Failed to create custom study session')}, status_code=500)
+            error_msg = result_data.get('error', 'Failed to create custom study session')
+            logger.error(f"Failed to create custom study session: {error_msg}")
+            return JSONResponse({"success": False, "error": error_msg}, status_code=500)
 
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        logger.error(f"Error creating custom study session: {e}")
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
 
 @app.post("/api/study-custom-session")
 async def study_custom_session(request: Dict[str, Any]):
@@ -2910,23 +3121,35 @@ async def study_custom_session(request: Dict[str, Any]):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 @app.post("/api/close-custom-study-session")
-async def close_custom_study_session(request: Dict[str, Any]):
+async def close_custom_study_session_endpoint(request: Request):
     """Close custom study session"""
     try:
-        deck_id = request.get('deck_id')
-        username = request.get('username')
+        data = await request.json()
+        deck_id = data.get('deck_id')
+        username = data.get('username')
 
         if not deck_id or not username:
             return JSONResponse({"error": "deck_id and username are required"}, status_code=400)
 
-        # For now, just return success - the actual session cleanup would need proper implementation
+        # Use study_ops to close the session
+        from AnkiClient.src.operations import study_ops
+
+        result, status_code = study_ops.study(
+            deck_id=deck_id,
+            action="close",
+            username=username
+        )
+
+        logger.info(f"Closed custom study session for deck {deck_id}")
+
         return JSONResponse({
             "success": True,
             "message": "Custom study session closed"
         })
 
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        logger.error(f"Error closing custom study session: {e}")
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
 
 # CLI interface
 cli = typer.Typer(help="Enhanced AnkiChat Web Interface with Claude SDK Integration")
