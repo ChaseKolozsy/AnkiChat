@@ -1562,36 +1562,23 @@ async def home(request: Request):
                 console.log(`Available layers (client-side): ${sortedAllLayers.join(', ')}`);
                 console.log(`Completed layers: ${vocabularySession.completedLayers.join(', ')}`);
 
-                // Step 2: Check if there's an active custom study session (server-side deck check is OK)
-                const decksResponse = await fetch('/api/decks', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: currentUser })
-                });
-
-                const decksResult = await decksResponse.json();
-                if (!decksResult.success || !decksResult.decks) {
-                    console.log('No decks found');
-                    return;
-                }
-
-                const customStudyDeck = decksResult.decks.find(deck => deck.name === 'Custom Study Session');
-
-                // Check if current custom study session matches the layer we want to study
-                const needsNewSession = !customStudyDeck ||
-                    vocabularySession.currentLayer !== nextLayerToStudy ||
+                // Step 2: Claude SDK should have already created custom study session
+                // Check if we need to start studying from the existing custom study session
+                const needsNewSession = vocabularySession.currentLayer !== nextLayerToStudy ||
                     !vocabularySession.isActive;
 
                 if (needsNewSession) {
-                    console.log(`Need to create custom study session for layer: ${nextLayerToStudy}`);
+                    console.log(`Starting vocabulary study session for layer: ${nextLayerToStudy}`);
 
-                    // Create custom study session for the next layer
-                    await createCustomStudySessionForLayer(nextLayerToStudy);
+                    // Start studying from the custom study session (Claude SDK already created it)
+                    // We don't need to create a new session - just start studying from the existing one
+                    vocabularySession.currentLayer = nextLayerToStudy;
+                    vocabularySession.isActive = true;
+
+                    // Start studying from the custom study session directly
+                    await startVocabularySession();
                 } else {
-                    console.log(`Using existing custom study session for layer: ${nextLayerToStudy}`);
-
-                    // Verify the existing session has cards and start studying
-                    await startVocabularySessionFromDeck(customStudyDeck.id);
+                    console.log(`Already studying layer: ${nextLayerToStudy}`);
                 }
 
                 // Update UI with client-side layer information
@@ -1766,6 +1753,43 @@ async def home(request: Request):
                 }
             } catch (error) {
                 console.error('Error creating custom study session for layer:', error);
+            }
+        }
+
+        async function startVocabularySession() {
+            try {
+                console.log('Starting vocabulary study session from existing custom study session');
+
+                // Use the study endpoint directly, just like grammar session
+                const response = await fetch('/api/study', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        deck_id: vocabularySession.currentCustomDeckId || 'Custom Study Session', // Use the deck ID Claude SDK created
+                        action: 'start',
+                        username: currentUser
+                    })
+                });
+
+                const result = await response.json();
+                if (result.success && result.card) {
+                    vocabularySession.currentCard = result.card;
+                    vocabularySession.isActive = true;
+
+                    // Display the vocabulary card using same logic as grammar
+                    displayVocabularyCard(result.card);
+
+                    // Show vocabulary interface
+                    document.getElementById('vocabulary-card-display').classList.remove('hidden');
+                    document.getElementById('vocab-define-section').classList.remove('hidden');
+                    document.getElementById('vocabulary-answers').classList.remove('hidden');
+
+                    console.log('Successfully started vocabulary study session');
+                } else {
+                    console.error('Failed to start vocabulary study session:', result.error || 'Unknown error');
+                }
+            } catch (error) {
+                console.error('Error starting vocabulary study session:', error);
             }
         }
 
