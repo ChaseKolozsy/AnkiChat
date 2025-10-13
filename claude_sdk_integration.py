@@ -1171,7 +1171,9 @@ FONTOS TAG INFORMÁCIÓ:
                 }
                 # Store session info for frontend retrieval
                 self.last_vocabulary_session = session_info
-                logger.info(f"Stored vocabulary session info for frontend: {session_info}")
+                # Update current_layer_tag to the session's layer so nested definitions work correctly
+                self.current_layer_tag = layer_tag
+                logger.info(f"Stored vocabulary session info for frontend and updated current_layer_tag to: {layer_tag}")
                 return session_info
             else:
                 logger.error(f"Failed to start study session for custom deck: {study_result}")
