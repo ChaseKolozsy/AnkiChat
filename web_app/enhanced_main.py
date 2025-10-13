@@ -2896,11 +2896,16 @@ async def study_endpoint(request: Request):
         # Use study_ops to perform the action
         from AnkiClient.src.operations import study_ops
 
+        logger.info(f"📚 Study endpoint: deck_id={deck_id}, action={action}, username={username}")
+
         result, status_code = study_ops.study(
             deck_id=deck_id,
             action=action,
             username=username
         )
+
+        logger.info(f"📚 study_ops returned: status_code={status_code}, result keys={list(result.keys()) if isinstance(result, dict) else type(result)}")
+        logger.info(f"📚 Full result: {result}")
 
         if status_code == 200:
             # Check if this is a "no more cards" message
@@ -2951,6 +2956,7 @@ async def study_endpoint(request: Request):
                     "error": f"Unknown action: {action}"
                 }
 
+            logger.info(f"📚 Returning response_data: {response_data}")
             return JSONResponse(response_data)
         else:
             return JSONResponse({"success": False, "error": str(result)}, status_code=status_code)
