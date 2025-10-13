@@ -564,7 +564,23 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
 
             # Generate nested layer tag based on current grammar layer + vocab card note_id
             base_layer_tag = self.current_layer_tag or "layer_unknown"
-            vocab_note_id = vocab_card.get('note_id', 'unknown')
+
+            # Get note_id from vocab card - if not present, fetch it using card_id
+            vocab_note_id = vocab_card.get('note_id')
+            if not vocab_note_id:
+                card_id = vocab_card.get('card_id') or vocab_card.get('id')
+                if card_id:
+                    try:
+                        from AnkiClient.src.operations.card_ops import get_card_contents
+                        full_card = get_card_contents(card_id=card_id, username="chase")
+                        vocab_note_id = full_card.get('note_id', 'unknown')
+                        logger.info(f"Nested vocab: Fetched note_id {vocab_note_id} from card_id {card_id}")
+                    except Exception as e:
+                        logger.error(f"Nested vocab: Failed to fetch note_id for card_id {card_id}: {e}")
+                        vocab_note_id = 'unknown'
+                else:
+                    vocab_note_id = 'unknown'
+
             nested_layer_tag = f"{base_layer_tag}_{vocab_note_id}"
 
             logger.info(f"Starting nested layer {nested_layer_tag} from vocabulary card with {len(words)} words")
