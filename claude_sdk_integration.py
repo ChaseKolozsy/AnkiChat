@@ -301,7 +301,21 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
             try:
                 # Get current layer tag from active grammar session
                 if self.grammar_session.current_card:
-                    base_note_id = self.grammar_session.current_card.get('note_id', 'unknown')
+                    # Get note_id from card - if not present, fetch it using card_id
+                    base_note_id = self.grammar_session.current_card.get('note_id')
+                    if not base_note_id:
+                        card_id = self.grammar_session.current_card.get('card_id')
+                        if card_id:
+                            try:
+                                from AnkiClient.src.operations.card_ops import get_card_contents
+                                full_card = get_card_contents(card_id=card_id, username="chase")
+                                base_note_id = full_card.get('note_id', 'unknown')
+                                logger.info(f"Polling: Fetched note_id {base_note_id} from card_id {card_id}")
+                            except Exception as e:
+                                logger.error(f"Polling: Failed to fetch note_id for card_id {card_id}: {e}")
+                                base_note_id = 'unknown'
+                        else:
+                            base_note_id = 'unknown'
                     self.current_layer_tag = f"layer_{base_note_id}"
                 else:
                     self.current_layer_tag = "layer_unknown"
@@ -485,7 +499,21 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
 
             # Generate layer tag from current card if not provided
             if not layer_tag:
-                base_note_id = current_card.get('note_id', 'unknown')
+                # Get note_id from card - if not present, fetch it using card_id
+                base_note_id = current_card.get('note_id')
+                if not base_note_id:
+                    card_id = current_card.get('card_id')
+                    if card_id:
+                        try:
+                            from AnkiClient.src.operations.card_ops import get_card_contents
+                            full_card = get_card_contents(card_id=card_id, username="chase")
+                            base_note_id = full_card.get('note_id', 'unknown')
+                            logger.info(f"Fetched note_id {base_note_id} from card_id {card_id}")
+                        except Exception as e:
+                            logger.error(f"Failed to fetch note_id for card_id {card_id}: {e}")
+                            base_note_id = 'unknown'
+                    else:
+                        base_note_id = 'unknown'
                 layer_tag = f"layer_{base_note_id}"
 
             # Track word count for this layer
@@ -630,7 +658,21 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
             # Generate layer tag if not provided - starts with current grammar card's note_id
             if not layer_tag:
                 if self.grammar_session.current_card:
-                    base_note_id = self.grammar_session.current_card.get('note_id', 'unknown')
+                    # Get note_id from card - if not present, fetch it using card_id
+                    base_note_id = self.grammar_session.current_card.get('note_id')
+                    if not base_note_id:
+                        card_id = self.grammar_session.current_card.get('card_id')
+                        if card_id:
+                            try:
+                                from AnkiClient.src.operations.card_ops import get_card_contents
+                                full_card = get_card_contents(card_id=card_id, username="chase")
+                                base_note_id = full_card.get('note_id', 'unknown')
+                                logger.info(f"SDK request: Fetched note_id {base_note_id} from card_id {card_id}")
+                            except Exception as e:
+                                logger.error(f"SDK request: Failed to fetch note_id for card_id {card_id}: {e}")
+                                base_note_id = 'unknown'
+                        else:
+                            base_note_id = 'unknown'
                     layer_tag = f"layer_{base_note_id}"
                 else:
                     layer_tag = "layer_unknown"
