@@ -2379,41 +2379,69 @@ async def get_active_layers(request: Dict[str, Any]):
             logger.error("Missing deck_id or username in active-layers request")
             return JSONResponse({"error": "deck_id and username are required"}, status_code=400)
 
-        # Get all cards with layer tags in the vocabulary deck
-        # First, get all cards in the deck
-        logger.info(f"Getting all cards in deck {deck_id} for user {username}")
-        cards = get_cards_in_deck(deck_id=deck_id, username=username)
+        # Check if there's an active custom study session
+        # The logic should be: if a custom study session was created and started,
+        # return only that layer tag. The web app should handle the sequential flow.
 
-        if not cards:
-            logger.info(f"No cards found in deck {deck_id}")
+        # For now, let's check if there's a "Custom Study Session" deck
+        decks_response = deck_ops.get_decks(username=username)
+
+        if not decks_response:
+            logger.info(f"No decks found for user {username}")
             return JSONResponse({"success": True, "layers": []})
 
-        logger.info(f"Found {len(cards)} cards in deck {deck_id}")
+        custom_study_deck = None
+        for deck in decks_response:
+            if deck.get('name') == 'Custom Study Session':
+                custom_study_deck = deck
+                break
 
-        # Extract unique layer tags from cards
+        if not custom_study_deck:
+            logger.info("No Custom Study Session deck found")
+            return JSONResponse({"success": True, "layers": []})
+
+        logger.info(f"Found Custom Study Session deck: {custom_study_deck}")
+
+        # Get cards in the custom study session to find the layer tag
+        cards_response = card_ops.get_cards_by_state(
+            deck_id=custom_study_deck['id'],
+            state="new",
+            username=username,
+            inclusions=['id', 'tags', 'note_id']
+        )
+
+        if not cards_response or 'cards' not in cards_response:
+            logger.info("No cards found in Custom Study Session")
+            return JSONResponse({"success": True, "layers": []})
+
+        cards = cards_response['cards']
+        logger.info(f"Found {len(cards)} cards in Custom Study Session")
+
+        # Extract layer tags from the custom study session cards
         layer_tags = set()
         for card in cards:
             tags = card.get('tags', [])
             for tag in tags:
                 if tag.startswith('layer_'):
                     layer_tags.add(tag)
-                    logger.info(f"Found layer tag: {tag} in card {card.get('id', card.get('card_id', 'unknown'))}")
+                    logger.info(f"Found layer tag: {tag} in Custom Study Session")
 
-        logger.info(f"Found {len(layer_tags)} unique layer tags: {list(layer_tags)}")
+        if not layer_tags:
+            logger.info("No layer tags found in Custom Study Session")
+            return JSONResponse({"success": True, "layers": []})
 
-        # Convert to list with timestamp info (simplified - using tag as timestamp)
-        layers = []
-        for tag in sorted(layer_tags, reverse=True):  # Reverse for most recent first
-            layers.append({
-                'tag': tag,
-                'created_at': tag  # Simplified - using tag as timestamp
-            })
-
-        logger.info(f"Returning {len(layers)} layers: {[l['tag'] for l in layers]}")
+        # Return only the longest tag (the active layer)
+        # The web app will handle sequential processing
+        active_layer_tag = max(layer_tags, key=len)
+        logger.info(f"Active layer tag: {active_layer_tag}")
 
         return JSONResponse({
             "success": True,
-            "layers": layers
+            "layers": [{
+                'tag': active_layer_tag,
+                'created_at': active_layer_tag,
+                'custom_study_deck_id': custom_study_deck['id']
+            }]
         })
 
     except Exception as e:
