@@ -128,6 +128,8 @@ class ClaudeSDKIntegration:
         self.vocab_deck_id: int = 1
         # Poller initialization guard: first pass seeds without enqueuing
         self.vocab_initialized: bool = False
+        # Track current vocabulary card for nested layer generation
+        self.current_vocabulary_card: Optional[Dict[str, Any]] = None
         self._check_sdk_availability()
 
     def set_vocabulary_deck(self, deck_id: int):
@@ -183,19 +185,21 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
 3. **MANDATORY ANKI CARD CREATION**:
    After creating each definition, you MUST create an Anki card using this EXACT format:
 
-   **DO NOT QUERY FOR NOTE TYPES OR DECKS** - Use these provided values:
+   **DECK SELECTION**:
+   - If VOCABULARY_DECK_ID is provided in the prompt, use that deck_id
+   - Otherwise, use deck_id: 1 as default
 
    Call mcp__anki-api__create_card with:
    - username: "chase"
    - note_type: "Hungarian Vocabulary Note"
-   - deck_id: 1
+   - deck_id: [USE_VOCABULARY_DECK_ID_FROM_PROMPT_OR_1]
    - fields: {
        "Word": "[THE_LEMMA_BASE_FORM_ONLY]",
        "Definition": "[YOUR_CREATIVE_DEFINITION_WITH_HTML_BR_TAGS]",
        "Grammar Code": "[IF_APPLICABLE_FROM_CONTEXT]",
        "Example Sentence": "[CREATE_EXAMPLE_USING_THE_LEMMA_BASE_FORM]"
    }
-   - tags: ["vocabulary", "mit-jelent", "from-context"]
+   - tags: ["vocabulary", "mit-jelent", "from-context", "[USE_LAYER_TAG_FROM_PROMPT_IF_PROVIDED]"]
 
 4. **CARD TEMPLATE REQUIREMENTS**:
    - Word field: Only the Hungarian word (no English ever)
@@ -251,19 +255,20 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
                     pass
 
                 # Seed seen IDs synchronously to exclude all existing cards in default deck (1)
+                # But DON'T start polling automatically - only poll when user requests definitions
                 try:
                     from AnkiClient.src.operations.deck_ops import get_cards_in_deck
                     existing_cards = get_cards_in_deck(deck_id=self.vocab_deck_id, username="chase")
                     if isinstance(existing_cards, list):
                         self.vocabulary_queue.record_initial_cards(existing_cards)
                         logger.info(
-                            f"Seeded {len(self.vocabulary_queue.seen_card_ids)} existing cards before starting poll"
+                            f"Seeded {len(self.vocabulary_queue.seen_card_ids)} existing cards (polling will start when definitions are requested)"
                         )
                 except Exception as e:
                     logger.warning(f"Synchronous vocabulary seeding failed: {e}")
 
-                # Start vocabulary polling against configured vocab deck
-                await self._start_vocabulary_polling()
+                # NOTE: Polling is NOT started automatically anymore to avoid collection lock conflicts
+                # Polling will be started only when the user requests word definitions
 
                 return {
                     'success': True,
@@ -286,11 +291,77 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
         asyncio.create_task(self._poll_vocabulary_cards())
 
     async def _poll_vocabulary_cards(self):
-        """Poll for new cards in default deck (ID: 1)"""
-        logger.info("Starting vocabulary card polling...")
+        """Poll for new vocabulary cards using tag-based filtering"""
+        logger.info("Starting tag-based vocabulary card polling...")
+        self.current_layer_tag = None
+        self.words_in_current_layer = 0
+        self.cards_processed_in_current_layer = 0
+
+        while self.polling_active:
+            try:
+                # Get current layer tag from active grammar session
+                if self.grammar_session.current_card:
+                    base_note_id = self.grammar_session.current_card.get('note_id', 'unknown')
+                    self.current_layer_tag = f"layer_{base_note_id}"
+                else:
+                    self.current_layer_tag = "layer_unknown"
+
+                # Poll for cards with the current layer tag that are in 'new' state
+                try:
+                    from AnkiClient.src.operations.card_ops import get_cards_by_tag_and_state
+
+                    logger.info(f"Polling for tag='{self.current_layer_tag}', state='new', username='chase'")
+                    tagged_cards = get_cards_by_tag_and_state(
+                        tag=self.current_layer_tag,
+                        state="new",
+                        username="chase",
+                        inclusions=None  # Get all fields
+                    )
+
+                    logger.info(f"get_cards_by_tag_and_state returned: {type(tagged_cards)} - {tagged_cards}")
+                    logger.info(f"Response details: length={len(tagged_cards) if hasattr(tagged_cards, '__len__') else 'N/A'}")
+
+                    if isinstance(tagged_cards, list) and tagged_cards:
+                        # Add new cards to the vocabulary queue
+                        new_count = 0
+                        for card in tagged_cards:
+                            card_id = self.vocabulary_queue._extract_card_id(card)
+                            if card_id and card_id not in self.vocabulary_queue.seen_card_ids:
+                                self.vocabulary_queue.seen_card_ids.add(card_id)
+                                self.vocabulary_queue.add_new_card(card)
+                                new_count += 1
+
+                        if new_count > 0:
+                            logger.info(f"Detected {new_count} new vocabulary cards with tag '{self.current_layer_tag}'")
+                            self.words_in_current_layer += new_count
+
+                except ImportError as e:
+                    # Fallback to old polling method if tag-based function not available
+                    logger.warning(f"Tag-based polling not available, falling back to deck polling: {e}")
+                    await self._fallback_poll_vocabulary_cards()
+                    return
+
+                # Check if current layer is complete
+                await self._check_layer_completion()
+
+                # Wait before next poll (3 seconds)
+                await asyncio.sleep(3)
+
+            except Exception as e:
+                logger.error(f"Error in tag-based vocabulary polling: {e}")
+                logger.error(f"Exception type: {type(e).__name__}")
+                logger.error(f"Exception details: {str(e)}")
+                logger.error(f"Current layer tag: {self.current_layer_tag}")
+                import traceback
+                logger.error(f"Traceback: {traceback.format_exc()}")
+                await asyncio.sleep(5)  # Wait longer on error
+
+    async def _fallback_poll_vocabulary_cards(self):
+        """Fallback polling method for when tag-based filtering is not available"""
+        logger.info("Using fallback vocabulary card polling...")
         last_card_count = 0
 
-        # On first run, seed seen_card_ids with current deck contents so we don't treat them as new
+        # On first run, seed seen_card_ids with current deck contents
         try:
             from AnkiClient.src.operations.deck_ops import get_cards_in_deck
             existing_cards = get_cards_in_deck(deck_id=self.vocab_deck_id, username="chase")
@@ -302,7 +373,7 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
 
         while self.polling_active:
             try:
-                # Get current cards in default deck
+                # Get current cards in vocabulary deck
                 from AnkiClient.src.operations.deck_ops import get_cards_in_deck
 
                 deck_cards = get_cards_in_deck(
@@ -329,16 +400,76 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
                                 new_count += 1
 
                         if new_count > 0:
-                            logger.info(f"Detected {new_count} new vocabulary cards by ID")
+                            logger.info(f"Detected {new_count} new vocabulary cards by ID (fallback method)")
 
                 # Wait before next poll (5 seconds)
                 await asyncio.sleep(5)
 
             except Exception as e:
-                logger.error(f"Error polling vocabulary cards: {e}")
-                await asyncio.sleep(10)  # Wait longer on error
+                logger.error(f"Error in fallback vocabulary polling: {e}")
+                await asyncio.sleep(10)
 
-    async def pause_grammar_session_for_definition(self, words: List[str]) -> Dict[str, Any]:
+    async def _check_layer_completion(self):
+        """Check if the current layer's vocabulary cards have been processed"""
+        if self.current_layer_tag and self.words_in_current_layer > 0:
+            # Count cards processed in current layer
+            processed_in_layer = sum(1 for card_id in self.vocabulary_queue.card_answer_mapping.keys()
+                                   if self._card_has_layer_tag(card_id, self.current_layer_tag))
+
+            # Check if all expected cards for this layer have been processed
+            if processed_in_layer >= self.words_in_current_layer:
+                logger.info(f"Layer {self.current_layer_tag} complete: {processed_in_layer}/{self.words_in_current_layer} cards processed")
+
+                # Get actual card count from the vocabulary deck with this layer tag to verify completion
+                try:
+                    from AnkiClient.src.operations.card_ops import get_cards_by_tag_and_state
+
+                    actual_cards_in_layer = get_cards_by_tag_and_state(
+                        tag=self.current_layer_tag,
+                        state="new",  # Check remaining unprocessed cards
+                        username="chase",
+                        inclusions=['id']  # Only get IDs for counting
+                    )
+
+                    if isinstance(actual_cards_in_layer, list):
+                        remaining_cards = len(actual_cards_in_layer)
+                        total_expected = self.words_in_current_layer
+
+                        # Layer is truly complete when no cards remain or all expected cards have been processed
+                        if remaining_cards == 0 or processed_in_layer >= total_expected:
+                            logger.info(f"Layer {self.current_layer_tag} fully verified complete: {processed_in_layer}/{total_expected} processed, {remaining_cards} remaining")
+
+                            # Reset for next layer
+                            self.current_layer_tag = None
+                            self.words_in_current_layer = 0
+                            self.cards_processed_in_current_layer = 0
+                        else:
+                            logger.info(f"Layer {self.current_layer_tag} progress: {processed_in_layer}/{total_expected} processed, {remaining_cards} still in deck")
+
+                except ImportError:
+                    # Fallback: assume completion based on processed count
+                    logger.info(f"Layer {self.current_layer_tag} complete (fallback): {processed_in_layer}/{self.words_in_current_layer} cards processed")
+                    self.current_layer_tag = None
+                    self.words_in_current_layer = 0
+                    self.cards_processed_in_current_layer = 0
+
+    def is_current_layer_complete(self) -> bool:
+        """Check if the current layer is complete based on word count comparison"""
+        if not self.current_layer_tag or self.words_in_current_layer == 0:
+            return True  # No active layer, considered complete
+
+        processed_in_layer = sum(1 for card_id in self.vocabulary_queue.card_answer_mapping.keys()
+                               if self._card_has_layer_tag(card_id, self.current_layer_tag))
+
+        return processed_in_layer >= self.words_in_current_layer
+
+    def _card_has_layer_tag(self, card_id: int, layer_tag: str) -> bool:
+        """Check if a card has a specific layer tag (placeholder for future implementation)"""
+        # This would require access to card tag information
+        # For now, we'll use a simplified approach
+        return True  # Simplified - in real implementation would check actual tags
+
+    async def pause_grammar_session_for_definition(self, words: List[str], layer_tag: str = None) -> Dict[str, Any]:
         """Pause grammar session and request word definitions from Claude SDK"""
         if not self.claude_sdk_available:
             return {'success': False, 'error': 'Claude Code SDK not available'}
@@ -352,6 +483,22 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
             if not current_card:
                 return {'success': False, 'error': 'No current card available for context'}
 
+            # Generate layer tag from current card if not provided
+            if not layer_tag:
+                base_note_id = current_card.get('note_id', 'unknown')
+                layer_tag = f"layer_{base_note_id}"
+
+            # Track word count for this layer
+            if not hasattr(self, 'layer_word_counts'):
+                self.layer_word_counts = {}
+            self.layer_word_counts[layer_tag] = len(words)
+            self.words_in_current_layer = len(words)
+
+            logger.info(f"Starting new layer {layer_tag} with {len(words)} words")
+
+            # START POLLING NOW - only when user requests word definitions
+            await self._start_vocabulary_polling()
+
             # Prepare context from current card
             card_context = self._prepare_card_context(current_card)
 
@@ -359,19 +506,64 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
             instructions = await self._get_context_instructions()
             instructions += "\n\n**IMPORTANT**: The study session has been closed by the web UI to allow card creation. You can now create Anki cards without restrictions."
 
-            # Send to Claude Code SDK
+            # Send to Claude Code SDK with layer tag and vocabulary deck ID
             definition_result = await self._request_definitions_from_claude_sdk(
-                words, card_context, instructions
+                words, card_context, instructions, layer_tag, self.vocab_deck_id
             )
 
             return {
                 'success': True,
                 'definition_request_id': definition_result.get('request_id'),
-                'session_paused': True
+                'session_paused': True,
+                'layer_tag': definition_result.get('layer_tag'),
+                'vocab_deck_id': definition_result.get('vocab_deck_id'),
+                'word_count': len(words)
             }
 
         except Exception as e:
             logger.error(f"Error pausing session for definitions: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def request_vocabulary_card_definitions(self, words: List[str], vocab_card: Dict[str, Any]) -> Dict[str, Any]:
+        """Request word definitions from a vocabulary card context with nested layer tags"""
+        if not self.claude_sdk_available:
+            return {'success': False, 'error': 'Claude Code SDK not available'}
+
+        try:
+            # Get the current vocabulary card context
+            if not vocab_card:
+                return {'success': False, 'error': 'No vocabulary card available for context'}
+
+            # Generate nested layer tag based on current grammar layer + vocab card note_id
+            base_layer_tag = self.current_layer_tag or "layer_unknown"
+            vocab_note_id = vocab_card.get('note_id', 'unknown')
+            nested_layer_tag = f"{base_layer_tag}_{vocab_note_id}"
+
+            logger.info(f"Starting nested layer {nested_layer_tag} from vocabulary card with {len(words)} words")
+
+            # Prepare context from vocabulary card
+            vocab_context = self._prepare_card_context(vocab_card)
+
+            # Get context instructions with vocabulary-specific additions
+            instructions = await self._get_context_instructions()
+            instructions += "\n\n**IMPORTANT**: This is a nested definition request from a vocabulary card."
+
+            # Send to Claude Code SDK with nested layer tag
+            definition_result = await self._request_definitions_from_claude_sdk(
+                words, vocab_context, instructions, nested_layer_tag, self.vocab_deck_id
+            )
+
+            return {
+                'success': True,
+                'definition_request_id': definition_result.get('request_id'),
+                'layer_tag': definition_result.get('layer_tag'),
+                'vocab_deck_id': definition_result.get('vocab_deck_id'),
+                'word_count': len(words),
+                'nested_layer': True
+            }
+
+        except Exception as e:
+            logger.error(f"Error requesting vocabulary card definitions: {e}")
             return {'success': False, 'error': str(e)}
 
     def _prepare_card_context(self, card_data: Dict[str, Any]) -> str:
@@ -408,14 +600,28 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
 
         return "\n".join(context_lines)
 
-    async def _request_definitions_from_claude_sdk(self, words: List[str], context: str, instructions: str) -> Dict[str, Any]:
+    async def _request_definitions_from_claude_sdk(self, words: List[str], context: str, instructions: str, layer_tag: str = None, vocab_deck_id: int = None) -> Dict[str, Any]:
         """Send definition request to Claude Code SDK"""
         try:
             from claude_code_sdk import query, ClaudeCodeOptions
 
-            # Prepare the prompt (explicitly permit/encourage subagents)
+            # Generate layer tag if not provided - starts with current grammar card's note_id
+            if not layer_tag:
+                if self.grammar_session.current_card:
+                    base_note_id = self.grammar_session.current_card.get('note_id', 'unknown')
+                    layer_tag = f"layer_{base_note_id}"
+                else:
+                    layer_tag = "layer_unknown"
+
+            # Prepare the prompt with layer tag and deck information
+            deck_info = f"\nVOCABULARY_DECK_ID: {vocab_deck_id}" if vocab_deck_id else ""
+            layer_info = f"\nLAYER_TAG: {layer_tag}"
+
             prompt = f"""
 {instructions}
+
+{deck_info}
+{layer_info}
 
 KONTEXTUS AHOL EZEK A SZAVAK MEGJELENTEK:
 {context}
@@ -429,6 +635,11 @@ FUTÁSSTRATÉGIA:
 - Minden szóhoz INDÍTSD EL egy külön szubügynököt (subagent) párhuzamosan.
 - A szubügynökök NE várjanak egymásra; dolgozzanak egyszerre.
 - Minden szubügynök 3–5 különböző, gazdag magyar definíciós megközelítést készítsen, majd hozzon létre 1 kártyát a legjobb szintézis alapján.
+
+FONTOS TAG INFORMÁCIÓ:
+- Hozzá kell adni a megadott LAYER_TAG-et minden létrehozott kártyához címként (tag)
+- Ha VOCABULARY_DECK_ID meg van adva, abban a pakliban (deck) kell létrehozni a kártyákat
+- A layer tag segít nyomon követni, melyik szinten/traversálban jöttek létre a kártyák
 """
 
             options = ClaudeCodeOptions(
@@ -445,7 +656,9 @@ FUTÁSSTRATÉGIA:
             return {
                 'success': True,
                 'request_id': f"def_{int(time.time())}",
-                'response': "".join(response_parts)
+                'response': "".join(response_parts),
+                'layer_tag': layer_tag,
+                'vocab_deck_id': vocab_deck_id
             }
 
         except Exception as e:
@@ -626,7 +839,15 @@ FUTÁSSTRATÉGIA:
         """Get next vocabulary card from LIFO queue with full contents"""
         card = self.vocabulary_queue.get_next_card()
         if not card:
+            self.current_vocabulary_card = None
+            # Stop polling when no more cards are available - prevents unnecessary API calls
+            if self.polling_active:
+                logger.info("Stopping polling: no more vocabulary cards in queue")
+                self.polling_active = False
             return None
+
+        # Track the current vocabulary card for nested layer generation
+        self.current_vocabulary_card = card
 
         # Get full card contents using card_ops
         try:
@@ -636,6 +857,8 @@ FUTÁSSTRATÉGIA:
             if card_id:
                 full_card_data = get_card_contents(card_id=card_id, username="chase")
                 logger.info(f"Retrieved full contents for vocabulary card {card_id}")
+                # Update the current vocabulary card with full data
+                self.current_vocabulary_card = full_card_data
                 return full_card_data
             else:
                 logger.warning("No card ID found, returning original card data")
@@ -679,38 +902,37 @@ FUTÁSSTRATÉGIA:
             return {'success': False, 'error': str(e)}
 
     async def _start_auto_vocabulary_session(self) -> Dict[str, Any]:
-        """Start automatic vocabulary session with cached answers"""
+        """Start LIFO layer-by-layer vocabulary study sessions with custom study sessions"""
         try:
             from AnkiClient.src.operations.study_ops import study
+            from AnkiClient.src.operations.card_ops import get_cards_by_tag_and_state
 
-            # Start session for default deck (ID: 1)
-            session_result, status_code = study(
-                deck_id=self.vocab_deck_id,
-                action="start",
-                username="chase"
-            )
+            if not self.vocabulary_queue.card_answer_mapping:
+                return {'success': False, 'error': 'No cached answers to process'}
 
-            if status_code != 200 or not session_result.get('card_id'):
-                return {'success': False, 'error': 'Failed to start auto session'}
+            # Group cards by layer tag for LIFO processing
+            layer_groups = self._group_cards_by_layer()
 
             session_id = f"vocab_session_{int(time.time())}"
-            processed_count = 0
+            total_processed = 0
 
-            # Process each cached answer
-            for card_id, answer in self.vocabulary_queue.card_answer_mapping.items():
-                try:
-                    result, _ = study(
-                        deck_id=self.vocab_deck_id,
-                        action=str(answer),
-                        username="chase"
-                    )
+            # Process layers in LIFO order (most recent first)
+            for layer_tag in sorted(layer_groups.keys(), reverse=True):
+                logger.info(f"Processing layer: {layer_tag} ({len(layer_groups[layer_tag])} cards)")
 
-                    if not result.get('error'):
-                        processed_count += 1
-                        logger.info(f"Auto-processed vocabulary card {card_id} with answer {answer}")
+                # Create custom study session for this layer
+                custom_session_result = await self._create_custom_study_session(layer_tag)
 
-                except Exception as e:
-                    logger.error(f"Error processing card {card_id}: {e}")
+                if not custom_session_result.get('success'):
+                    logger.error(f"Failed to create custom study session for layer {layer_tag}")
+                    continue
+
+                # Process cards in this layer
+                layer_processed = await self._process_layer_cards(layer_groups[layer_tag], layer_tag)
+                total_processed += layer_processed
+
+                # Close the custom study session
+                await self._close_custom_study_session()
 
             # Clear processed answers
             self.vocabulary_queue.card_answer_mapping.clear()
@@ -718,12 +940,115 @@ FUTÁSSTRATÉGIA:
             return {
                 'success': True,
                 'session_id': session_id,
-                'processed_count': processed_count
+                'processed_count': total_processed,
+                'layers_processed': len(layer_groups)
             }
 
         except Exception as e:
-            logger.error(f"Error in auto vocabulary session: {e}")
+            logger.error(f"Error in LIFO vocabulary session: {e}")
             return {'success': False, 'error': str(e)}
+
+    def _group_cards_by_layer(self) -> Dict[str, List[int]]:
+        """Group cached vocabulary cards by their layer tags"""
+        layer_groups = {}
+
+        for card_id, answer in self.vocabulary_queue.card_answer_mapping.items():
+            # For now, use a simple grouping based on current layer
+            # In a full implementation, this would extract actual tags from cards
+            if self.current_layer_tag:
+                layer_tag = self.current_layer_tag
+            else:
+                layer_tag = "layer_unknown"
+
+            if layer_tag not in layer_groups:
+                layer_groups[layer_tag] = []
+            layer_groups[layer_tag].append(card_id)
+
+        return layer_groups
+
+    async def _create_custom_study_session(self, layer_tag: str) -> Dict[str, Any]:
+        """Create a custom study session for cards with a specific layer tag"""
+        try:
+            from AnkiClient.src.operations.deck_ops import create_custom_study_session
+
+            custom_study_params = {
+                "new_limit_delta": 0,
+                "cram": {
+                    "kind": "CRAM_KIND_DUE",
+                    "card_limit": 100,  # Process all cards in the layer
+                    "tags_to_include": [layer_tag],
+                    "tags_to_exclude": []
+                }
+            }
+
+            result = create_custom_study_session(
+                username="chase",
+                deck_id=self.vocab_deck_id,
+                custom_study_params=custom_study_params,
+                leave_open=False
+            )
+
+            if result.get('success'):
+                logger.info(f"Created custom study session for layer {layer_tag}")
+                return {'success': True, 'session_id': result.get('session_id')}
+            else:
+                return {'success': False, 'error': result.get('error', 'Unknown error')}
+
+        except Exception as e:
+            logger.error(f"Error creating custom study session for layer {layer_tag}: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def _process_layer_cards(self, card_ids: List[int], layer_tag: str) -> int:
+        """Process all cards in a layer using their cached answers"""
+        try:
+            from AnkiClient.src.operations.study_ops import study
+
+            processed_count = 0
+
+            for card_id in card_ids:
+                try:
+                    answer = self.vocabulary_queue.card_answer_mapping.get(card_id)
+                    if answer is None:
+                        continue
+
+                    # Submit the cached answer
+                    result, status_code = study(
+                        deck_id=self.vocab_deck_id,
+                        action=str(answer),
+                        username="chase"
+                    )
+
+                    if status_code == 200 and not result.get('error'):
+                        processed_count += 1
+                        logger.info(f"Processed vocabulary card {card_id} in layer {layer_tag} with answer {answer}")
+                    else:
+                        logger.warning(f"Failed to process card {card_id}: {result.get('error', 'Unknown error')}")
+
+                except Exception as e:
+                    logger.error(f"Error processing card {card_id} in layer {layer_tag}: {e}")
+
+            return processed_count
+
+        except Exception as e:
+            logger.error(f"Error processing layer {layer_tag}: {e}")
+            return 0
+
+    async def _close_custom_study_session(self):
+        """Close the current custom study session"""
+        try:
+            from AnkiClient.src.operations.study_ops import study
+
+            # Close any active study session
+            study(
+                deck_id=self.vocab_deck_id,
+                action="close",
+                username="chase"
+            )
+
+            logger.info("Closed custom study session")
+
+        except Exception as e:
+            logger.error(f"Error closing custom study session: {e}")
 
     async def cleanup(self):
         """Clean up resources and close active study sessions"""
