@@ -2923,12 +2923,15 @@ async def study_endpoint(request: Request):
                     "card": result
                 }
             elif action == 'flip':
+                # Flip returns back, ease_options, and media_files (no front or card_id)
+                # Success if we have back data or ease_options
                 response_data = {
-                    "success": True if result.get('card_id') else False,
+                    "success": True if result.get('back') or result.get('ease_options') else False,
                     "front": result.get('front', {}),
                     "back": result.get('back', {}),
                     "ease_options": result.get('ease_options', {}),
-                    "card_id": result.get('card_id')
+                    "card_id": result.get('card_id'),
+                    "media_files": result.get('media_files', {})
                 }
             elif action in ['1', '2', '3', '4']:
                 # Answer action - return next card
