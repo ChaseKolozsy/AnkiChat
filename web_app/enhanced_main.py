@@ -2373,14 +2373,22 @@ async def get_active_layers(request: Dict[str, Any]):
         deck_id = request.get('deck_id')
         username = request.get('username')
 
+        logger.info(f"Active layers request: deck_id={deck_id}, username={username}")
+
         if not deck_id or not username:
+            logger.error("Missing deck_id or username in active-layers request")
             return JSONResponse({"error": "deck_id and username are required"}, status_code=400)
 
         # Get all cards with layer tags in the vocabulary deck
         # First, get all cards in the deck
+        logger.info(f"Getting all cards in deck {deck_id} for user {username}")
         cards = get_cards_in_deck(deck_id=deck_id, username=username)
+
         if not cards:
+            logger.info(f"No cards found in deck {deck_id}")
             return JSONResponse({"success": True, "layers": []})
+
+        logger.info(f"Found {len(cards)} cards in deck {deck_id}")
 
         # Extract unique layer tags from cards
         layer_tags = set()
@@ -2389,6 +2397,9 @@ async def get_active_layers(request: Dict[str, Any]):
             for tag in tags:
                 if tag.startswith('layer_'):
                     layer_tags.add(tag)
+                    logger.info(f"Found layer tag: {tag} in card {card.get('id', card.get('card_id', 'unknown'))")
+
+        logger.info(f"Found {len(layer_tags)} unique layer tags: {list(layer_tags)}")
 
         # Convert to list with timestamp info (simplified - using tag as timestamp)
         layers = []
@@ -2398,12 +2409,19 @@ async def get_active_layers(request: Dict[str, Any]):
                 'created_at': tag  # Simplified - using tag as timestamp
             })
 
+        logger.info(f"Returning {len(layers)} layers: {[l['tag'] for l in layers]}")
+
         return JSONResponse({
             "success": True,
             "layers": layers
         })
 
     except Exception as e:
+        logger.error(f"Error in active-layers endpoint: {e}")
+        logger.error(f"Exception type: {type(e).__name__}")
+        logger.error(f"Exception details: {str(e)}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return JSONResponse({"error": str(e)}, status_code=500)
 
 @app.post("/api/cards-by-tag-and-state")
