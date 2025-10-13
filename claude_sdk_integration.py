@@ -307,26 +307,32 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
                     logger.info("Polling stopped, exiting poll loop")
                     break
 
-                # Get current layer tag from active grammar session
-                if self.grammar_session.current_card:
-                    # Get note_id from card - if not present, fetch it using card_id
-                    base_note_id = self.grammar_session.current_card.get('note_id')
-                    if not base_note_id:
-                        card_id = self.grammar_session.current_card.get('card_id')
-                        if card_id:
-                            try:
-                                from AnkiClient.src.operations.card_ops import get_card_contents
-                                full_card = get_card_contents(card_id=card_id, username="chase")
-                                base_note_id = full_card.get('note_id', 'unknown')
-                                logger.info(f"Polling: Fetched note_id {base_note_id} from card_id {card_id}")
-                            except Exception as e:
-                                logger.error(f"Polling: Failed to fetch note_id for card_id {card_id}: {e}")
+                # DO NOT modify self.current_layer_tag here - it's set by the definition request
+                # and should be preserved throughout the polling cycle. The polling should use
+                # whatever layer tag was set by request_vocabulary_card_definitions or
+                # pause_grammar_session_for_definition.
+
+                # If no current_layer_tag is set, use a fallback (shouldn't happen normally)
+                if not self.current_layer_tag:
+                    logger.warning("No current_layer_tag set, using fallback from grammar session")
+                    if self.grammar_session.current_card:
+                        base_note_id = self.grammar_session.current_card.get('note_id')
+                        if not base_note_id:
+                            card_id = self.grammar_session.current_card.get('card_id')
+                            if card_id:
+                                try:
+                                    from AnkiClient.src.operations.card_ops import get_card_contents
+                                    full_card = get_card_contents(card_id=card_id, username="chase")
+                                    base_note_id = full_card.get('note_id', 'unknown')
+                                    logger.info(f"Polling: Fetched note_id {base_note_id} from card_id {card_id}")
+                                except Exception as e:
+                                    logger.error(f"Polling: Failed to fetch note_id for card_id {card_id}: {e}")
+                                    base_note_id = 'unknown'
+                            else:
                                 base_note_id = 'unknown'
-                        else:
-                            base_note_id = 'unknown'
-                    self.current_layer_tag = f"layer_{base_note_id}"
-                else:
-                    self.current_layer_tag = "layer_unknown"
+                        self.current_layer_tag = f"layer_{base_note_id}"
+                    else:
+                        self.current_layer_tag = "layer_unknown"
 
                 # Poll for cards with the current layer tag that are in 'new' state
                 try:
