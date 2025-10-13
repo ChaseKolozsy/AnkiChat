@@ -1386,6 +1386,40 @@ async def home(request: Request):
                     console.log(`Available layers now: ${vocabularySession.availableLayers.join(', ')}`);
                 }
 
+                // Count initial cards for this layer BEFORE requesting definitions
+                const wordsToDefine = words.split(',').map(w => w.trim());
+                console.log(`Will request definitions for ${wordsToDefine.length} words`);
+
+                // Count initial cards for this layer (server-side check is OK for counting)
+                try {
+                    const countResponse = await fetch('/api/cards-by-tag-and-state', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            deck_id: selectedVocabularyDeck.id,
+                            username: currentUser,
+                            tag: layerTag,
+                            state: 'new'
+                        })
+                    });
+
+                    const countResult = await countResponse.json();
+                    if (countResult.success && countResult.cards) {
+                        vocabularySession.initialCardsForLayer = countResult.cards.length;
+                        vocabularySession.expectedCardsForLayer = countResult.cards.length + wordsToDefine.length;
+                        console.log(`Initial cards for layer ${layerTag}: ${vocabularySession.initialCardsForLayer}`);
+                        console.log(`Expected total cards: ${vocabularySession.expectedCardsForLayer} (initial + requested)`);
+                    } else {
+                        console.log('Could not count initial cards, using defaults');
+                        vocabularySession.initialCardsForLayer = 0;
+                        vocabularySession.expectedCardsForLayer = wordsToDefine.length;
+                    }
+                } catch (error) {
+                    console.warn('Error counting initial cards:', error);
+                    vocabularySession.initialCardsForLayer = 0;
+                    vocabularySession.expectedCardsForLayer = wordsToDefine.length;
+                }
+
                 const response = await fetch('/api/request-definitions', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1568,23 +1602,63 @@ async def home(request: Request):
                 console.log(`Available layers (client-side): ${sortedAllLayers.join(', ')}`);
                 console.log(`Completed layers: ${vocabularySession.completedLayers.join(', ')}`);
 
-                // Step 2: Claude SDK should have already created custom study session
-                // Check if we need to start studying from the existing custom study session
-                const needsNewSession = vocabularySession.currentLayer !== nextLayerToStudy ||
-                    !vocabularySession.isActive;
+                // Step 2: Check if Claude Code has finished creating all expected cards for this layer
+                if (!vocabularySession.expectedCardsForLayer) {
+                    console.log(`No expected card count set for layer ${nextLayerToStudy}, skipping vocabulary session start`);
+                    return;
+                }
 
-                if (needsNewSession) {
-                    console.log(`Starting vocabulary study session for layer: ${nextLayerToStudy}`);
+                // Count current cards for this layer to check if Claude Code is done
+                try {
+                    const currentCountResponse = await fetch('/api/cards-by-tag-and-state', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            deck_id: selectedVocabularyDeck.id,
+                            username: currentUser,
+                            tag: nextLayerToStudy,
+                            state: 'new'
+                        })
+                    });
 
-                    // Start studying from the custom study session (Claude SDK already created it)
-                    // We don't need to create a new session - just start studying from the existing one
-                    vocabularySession.currentLayer = nextLayerToStudy;
-                    vocabularySession.isActive = true;
+                    const currentCountResult = await currentCountResponse.json();
+                    if (currentCountResult.success && currentCountResult.cards) {
+                        const currentCardCount = currentCountResult.cards.length;
+                        console.log(`Current card count for layer ${nextLayerToStudy}: ${currentCardCount}`);
+                        console.log(`Expected card count: ${vocabularySession.expectedCardsForLayer}`);
 
-                    // Start studying from the custom study session directly
-                    await startVocabularySession();
-                } else {
-                    console.log(`Already studying layer: ${nextLayerToStudy}`);
+                        // Only start vocabulary session when Claude Code has finished creating all cards
+                        if (currentCardCount >= vocabularySession.expectedCardsForLayer) {
+                            console.log(`✅ Claude Code finished creating all cards (${currentCardCount}/${vocabularySession.expectedCardsForLayer})`);
+
+                            const needsNewSession = vocabularySession.currentLayer !== nextLayerToStudy ||
+                                !vocabularySession.isActive;
+
+                            if (needsNewSession) {
+                                console.log(`Starting vocabulary study session for layer: ${nextLayerToStudy}`);
+
+                                // Start studying from the custom study session (Claude SDK already created it)
+                                vocabularySession.currentLayer = nextLayerToStudy;
+                                vocabularySession.isActive = true;
+                                vocabularySession.currentCardsCount = currentCardCount;
+
+                                // Start studying from the custom study session directly
+                                await startVocabularySession();
+                            } else {
+                                console.log(`Already studying layer: ${nextLayerToStudy}`);
+                            }
+                        } else {
+                            console.log(`⏳ Waiting for Claude Code to finish creating cards (${currentCardCount}/${vocabularySession.expectedCardsForLayer})`);
+                            // Don't start session yet, just wait for next polling cycle
+                            return;
+                        }
+                    } else {
+                        console.log('Could not get current card count, skipping vocabulary session start');
+                        return;
+                    }
+                } catch (error) {
+                    console.warn('Error checking current card count:', error);
+                    return;
                 }
 
                 // Update UI with client-side layer information
