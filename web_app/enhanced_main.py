@@ -2397,7 +2397,7 @@ async def get_active_layers(request: Dict[str, Any]):
             for tag in tags:
                 if tag.startswith('layer_'):
                     layer_tags.add(tag)
-                    logger.info(f"Found layer tag: {tag} in card {card.get('id', card.get('card_id', 'unknown'))")
+                    logger.info(f"Found layer tag: {tag} in card {card.get('id', card.get('card_id', 'unknown'))}")
 
         logger.info(f"Found {len(layer_tags)} unique layer tags: {list(layer_tags)}")
 
