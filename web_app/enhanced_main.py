@@ -980,14 +980,14 @@ async def home(request: Request):
                     // Display grammar card
                     displayGrammarCard(result.current_card);
 
-                    // Start vocabulary polling
-                    startVocabularyPolling();
+                    // Load vocabulary layers (new layer-based system)
+                    await refreshLayers();
 
                     // Render the cached counts (no fetching during session)
                     renderCachedCounts();
 
                     updateSessionStatus('grammar-status', 'Active', 'status-active');
-                    updateSessionStatus('vocab-status', 'Polling', 'status-waiting');
+                    updateSessionStatus('vocab-status', 'No Active Layer', 'status-waiting');
 
                 } else {
                     alert('Error starting session: ' + result.error);
@@ -1386,6 +1386,12 @@ async def home(request: Request):
                 if (result.success) {
                     document.getElementById('claude-status').classList.remove('hidden');
                     grammarSession.paused = true;
+
+                    // Refresh layers after a delay to allow card creation
+                    setTimeout(async () => {
+                        await refreshLayers();
+                        console.log('Refreshed layers after grammar definition request');
+                    }, 3000);
                 } else {
                     alert('Error requesting definitions: ' + result.error);
                     claudeProcessing = false;
@@ -1398,35 +1404,7 @@ async def home(request: Request):
             }
         }
 
-        async function requestVocabularyDefinitions() {
-            const words = document.getElementById('vocab-words-to-define').value.trim();
-            if (!words || !vocabularySession.currentCard) {
-                alert('Please enter words and ensure a vocabulary card is displayed');
-                return;
-            }
-
-            try {
-                const response = await fetch('/api/request-vocabulary-definitions', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        username: currentUser,
-                        words: words.split(',').map(w => w.trim()),
-                        card_context: vocabularySession.currentCard,
-                        priority: true
-                    })
-                });
-
-                const result = await response.json();
-                if (result.success) {
-                    alert('Priority vocabulary definition request sent to Claude SDK');
-                } else {
-                    alert('Error requesting vocabulary definitions: ' + result.error);
-                }
-            } catch (error) {
-                alert('Error requesting vocabulary definitions: ' + error.message);
-            }
-        }
+        // OLD requestVocabularyDefinitions() removed - see new layer-based version below
 
         async function answerCard(answer) {
             if (!grammarSession.currentCard) {
@@ -1568,7 +1546,16 @@ async def home(request: Request):
             }
         }
 
-        function startVocabularyPolling() {
+        // ===== OLD QUEUE-BASED FUNCTIONS REMOVED =====
+        // The following functions have been replaced by the layer-based system:
+        // - startVocabularyPolling()
+        // - getNextVocabularyCard()
+        // - updateVocabularyQueue()
+        // - updateVocabularyStatus()
+        // - updateCachedAnswerAvailability()
+        // See new layer-based functions below starting at refreshLayers()
+
+        function startVocabularyPolling_OLD_REMOVED() {
             if (pollingInterval) return;
 
             let lastQueueLength = 0;
@@ -1782,37 +1769,309 @@ async def home(request: Request):
             }, 2000);
         }
 
-        async function submitVocabularySession() {
-            if (Object.keys(vocabularySession.cachedAnswers).length === 0) {
-                alert('No cached vocabulary answers to submit');
-                return;
-            }
+        // ===== NEW LAYER-BASED VOCABULARY FUNCTIONS =====
 
+        async function refreshLayers() {
             try {
-                const response = await fetch('/api/submit-vocabulary-session', {
+                const response = await fetch('/api/active-layers', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: currentUser })
+                    body: JSON.stringify({
+                        deck_id: selectedVocabularyDeck.id,
+                        username: currentUser
+                    })
                 });
 
                 const result = await response.json();
                 if (result.success) {
-                    alert(`Auto-session completed! Successfully processed ${result.processed_count} vocabulary cards.`);
+                    vocabularySession.availableLayers = result.layers;
 
-                    // Clear cached answers
-                    vocabularySession.cachedAnswers = {};
-                    // Clear current card so next poll can show newly created ones
-                    vocabularySession.currentCard = null;
-                    updateVocabularyStatus();
+                    // Update layer count display
+                    document.getElementById('active-layer-count').textContent = result.layers.length;
 
-                    // Check if cached answer can now be submitted
-                    updateCachedAnswerAvailability();
+                    // Populate layer selector dropdown
+                    const layerSelect = document.getElementById('layer-select');
+                    layerSelect.innerHTML = '';
+
+                    if (result.layers.length === 0) {
+                        layerSelect.innerHTML = '<option value="">-- No layers available --</option>';
+                        document.getElementById('start-layer-btn').disabled = true;
+                    } else {
+                        layerSelect.innerHTML = '<option value="">-- Select a layer --</option>';
+                        // Sort layers in LIFO order (most recent first)
+                        result.layers.forEach(layer => {
+                            const option = document.createElement('option');
+                            option.value = layer.tag;
+                            option.textContent = layer.tag;
+                            layerSelect.appendChild(option);
+                        });
+                    }
+
+                    console.log(`Loaded ${result.layers.length} active layers`);
                 } else {
-                    alert('Error submitting vocabulary session: ' + result.error);
+                    console.error('Error fetching layers:', result.error);
                 }
             } catch (error) {
-                alert('Error submitting vocabulary session: ' + error.message);
+                console.error('Error refreshing layers:', error);
             }
+        }
+
+        function selectLayer() {
+            const layerSelect = document.getElementById('layer-select');
+            const startBtn = document.getElementById('start-layer-btn');
+
+            if (layerSelect.value) {
+                startBtn.disabled = false;
+            } else {
+                startBtn.disabled = true;
+            }
+        }
+
+        async function startLayerStudy() {
+            const layerSelect = document.getElementById('layer-select');
+            const selectedLayerTag = layerSelect.value;
+
+            if (!selectedLayerTag) {
+                alert('Please select a layer to study');
+                return;
+            }
+
+            try {
+                // Close any existing vocabulary session first
+                if (vocabularySession.currentCustomDeckId) {
+                    await fetch('/api/close-custom-study-session', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            deck_id: vocabularySession.currentCustomDeckId,
+                            username: currentUser
+                        })
+                    });
+                }
+
+                // Create custom study session for the selected layer
+                const createResponse = await fetch('/api/create-custom-study-session', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        deck_id: selectedVocabularyDeck.id,
+                        username: currentUser,
+                        tag: selectedLayerTag,
+                        card_limit: 100
+                    })
+                });
+
+                const createResult = await createResponse.json();
+                if (createResult.success) {
+                    vocabularySession.currentLayer = selectedLayerTag;
+                    vocabularySession.currentCustomDeckId = createResult.session_deck_id;
+
+                    // Update UI
+                    document.getElementById('current-layer-tag').textContent = selectedLayerTag;
+                    updateSessionStatus('vocab-status', 'Active', 'status-active');
+
+                    // Hide layer selector, show study interface
+                    document.getElementById('layer-selector').classList.add('hidden');
+
+                    // Start studying the custom session
+                    await startCustomStudySession();
+                } else {
+                    alert('Error creating custom study session: ' + createResult.error);
+                }
+            } catch (error) {
+                console.error('Error starting layer study:', error);
+                alert('Error starting layer study: ' + error.message);
+            }
+        }
+
+        async function startCustomStudySession() {
+            try {
+                const response = await fetch('/api/study', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        deck_id: vocabularySession.currentCustomDeckId,
+                        action: 'start',
+                        username: currentUser
+                    })
+                });
+
+                const result = await response.json();
+                if (result.success !== false && result.front) {
+                    vocabularySession.currentCard = result;
+                    displayVocabularyCard(result);
+                    vocabularySession.active = true;
+                } else if (result.message && result.message.includes('No more cards')) {
+                    alert('No cards available in this layer');
+                    await completeLayer();
+                } else {
+                    alert('Error starting custom study session: ' + (result.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Error starting custom study session:', error);
+                alert('Error starting custom study session: ' + error.message);
+            }
+        }
+
+        async function answerVocabularyCard(answer) {
+            if (!vocabularySession.currentCard) {
+                alert('No current vocabulary card to answer');
+                return;
+            }
+
+            try {
+                // Use the study endpoint with the custom deck ID to answer the card
+                const response = await fetch('/api/study', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        deck_id: vocabularySession.currentCustomDeckId,
+                        action: answer.toString(),
+                        username: currentUser
+                    })
+                });
+
+                const result = await response.json();
+                if (result.success !== false && result.front) {
+                    // Got next card
+                    vocabularySession.currentCard = result;
+                    displayVocabularyCard(result);
+                } else if (result.message && result.message.includes('No more cards')) {
+                    // No more cards in this layer
+                    document.getElementById('vocabulary-card-display').classList.add('hidden');
+                    document.getElementById('vocab-define-section').classList.add('hidden');
+                    document.getElementById('vocabulary-answers').classList.add('hidden');
+                    document.getElementById('complete-layer-btn').classList.remove('hidden');
+                    alert('Layer completed! No more cards to study.');
+                } else {
+                    alert('Error answering card: ' + (result.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Error answering vocabulary card:', error);
+                alert('Error answering vocabulary card: ' + error.message);
+            }
+        }
+
+        async function completeLayer() {
+            try {
+                // Close the custom study session
+                if (vocabularySession.currentCustomDeckId) {
+                    await fetch('/api/close-custom-study-session', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            deck_id: vocabularySession.currentCustomDeckId,
+                            username: currentUser
+                        })
+                    });
+                }
+
+                // Reset vocabulary session state
+                vocabularySession.active = false;
+                vocabularySession.currentLayer = null;
+                vocabularySession.currentCustomDeckId = null;
+                vocabularySession.currentCard = null;
+
+                // Update UI
+                document.getElementById('current-layer-tag').textContent = 'None';
+                document.getElementById('layer-cards-remaining').textContent = '0';
+                updateSessionStatus('vocab-status', 'Completed', 'status-waiting');
+                document.getElementById('complete-layer-btn').classList.add('hidden');
+
+                // Refresh layers list
+                await refreshLayers();
+
+                // Show layer selector again
+                document.getElementById('layer-selector').classList.remove('hidden');
+
+                // Auto-select next layer if available (LIFO = most recent first)
+                if (vocabularySession.availableLayers.length > 0) {
+                    const layerSelect = document.getElementById('layer-select');
+                    layerSelect.value = vocabularySession.availableLayers[0].tag;
+                    selectLayer();
+
+                    // Optionally auto-start the next layer
+                    if (confirm('Start studying the next layer?')) {
+                        await startLayerStudy();
+                    }
+                } else {
+                    alert('All vocabulary layers completed!');
+                }
+            } catch (error) {
+                console.error('Error completing layer:', error);
+                alert('Error completing layer: ' + error.message);
+            }
+        }
+
+        async function requestVocabularyDefinitions() {
+            const words = document.getElementById('vocab-words-to-define').value.trim();
+            if (!words || !vocabularySession.currentCard) {
+                alert('Please enter words and ensure a vocabulary card is displayed');
+                return;
+            }
+
+            try {
+                // Close current custom study session before requesting definitions
+                if (vocabularySession.currentCustomDeckId) {
+                    await fetch('/api/close-custom-study-session', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            deck_id: vocabularySession.currentCustomDeckId,
+                            username: currentUser
+                        })
+                    });
+                    console.log('Closed custom study session before nested definition request');
+                }
+
+                const response = await fetch('/api/request-vocabulary-definitions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username: currentUser,
+                        words: words.split(',').map(w => w.trim()),
+                        card_context: vocabularySession.currentCard,
+                        priority: true
+                    })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    alert('Nested vocabulary definition request sent to Claude SDK. New nested layer will be created.');
+
+                    // Wait a moment for cards to be created, then refresh layers
+                    setTimeout(async () => {
+                        await refreshLayers();
+
+                        // Auto-select the newest layer (nested layer will be first in LIFO order)
+                        if (vocabularySession.availableLayers.length > 0) {
+                            const layerSelect = document.getElementById('layer-select');
+                            const nestedLayer = vocabularySession.availableLayers[0];
+                            layerSelect.value = nestedLayer.tag;
+                            selectLayer();
+
+                            // Show layer selector
+                            document.getElementById('layer-selector').classList.remove('hidden');
+                            document.getElementById('vocabulary-card-display').classList.add('hidden');
+                            document.getElementById('vocab-define-section').classList.add('hidden');
+                            document.getElementById('vocabulary-answers').classList.add('hidden');
+
+                            alert(`Nested layer ${nestedLayer.tag} is ready. Click "Start Layer Study" to begin.`);
+                        }
+                    }, 3000); // Wait 3 seconds for card creation
+                } else {
+                    alert('Error requesting vocabulary definitions: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Error requesting vocabulary definitions:', error);
+                alert('Error requesting vocabulary definitions: ' + error.message);
+            }
+        }
+
+        // ===== OLD QUEUE-BASED FUNCTIONS (TO BE REMOVED) =====
+        async function submitVocabularySession() {
+            console.warn('submitVocabularySession is deprecated - using layer-based system');
+            alert('This function is deprecated. Please use the layer-based study system.');
         }
 
         function updateSessionStatus(elementId, text, statusClass) {
