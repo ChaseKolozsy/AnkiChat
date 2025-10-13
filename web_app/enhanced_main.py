@@ -1502,66 +1502,8 @@ async def home(request: Request):
             }
         }
 
-        async function answerVocabularyCard(answer) {
-            if (!vocabularySession.currentCard) {
-                alert('No current vocabulary card to answer');
-                return;
-            }
-
-            const cardId = vocabularySession.currentCard.id || vocabularySession.currentCard.card_id;
-            vocabularySession.cachedAnswers[cardId] = answer;
-
-            try {
-                const response = await fetch('/api/cache-vocabulary-answer', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        username: currentUser,
-                        card_id: cardId,
-                        answer: answer
-                    })
-                });
-
-                const result = await response.json();
-                if (result.success) {
-                    showVocabularyFeedback(true); // Show success border
-                    updateVocabularyStatus();
-
-                    // Move to next vocabulary card
-                    const nextCard = await getNextVocabularyCard();
-                    if (nextCard) {
-                        displayVocabularyCard(nextCard);
-                    } else {
-                        document.getElementById('vocabulary-card-display').classList.add('hidden');
-                        document.getElementById('vocab-define-section').classList.add('hidden');
-                        document.getElementById('vocabulary-answers').classList.add('hidden');
-                        // Clear current card so polling can fetch new ones later
-                        vocabularySession.currentCard = null;
-                    }
-                } else {
-                    showVocabularyFeedback(false); // Show error border
-                }
-            } catch (error) {
-                showVocabularyFeedback(false); // Show error border
-            }
-        }
-
-        function showVocabularyFeedback(success) {
-            const vocabContainer = document.querySelector('.vocabulary-session');
-            if (!vocabContainer) return;
-
-            // Remove any existing feedback classes
-            vocabContainer.classList.remove('feedback-success', 'feedback-error');
-
-            // Add appropriate feedback class
-            const feedbackClass = success ? 'feedback-success' : 'feedback-error';
-            vocabContainer.classList.add(feedbackClass);
-
-            // Remove feedback after 2 seconds
-            setTimeout(() => {
-                vocabContainer.classList.remove(feedbackClass);
-            }, 2000);
-        }
+        // OLD answerVocabularyCard() and showVocabularyFeedback() removed
+        // See new layer-based vocabulary functions below
 
         // ===== NEW LAYER-BASED VOCABULARY FUNCTIONS =====
 
