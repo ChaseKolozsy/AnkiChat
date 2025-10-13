@@ -469,23 +469,11 @@ async def home(request: Request):
             <!-- Vocabulary Session (Layer-based Custom Study) -->
             <div class="session-column">
                 <div class="card vocabulary-session">
-                    <h2>📖 Vocabulary Layers <span class="session-status status-waiting" id="vocab-status">No Active Layer</span></h2>
+                    <h2>📖 Vocabulary Study Session <span class="session-status status-waiting" id="vocab-status">Waiting for custom study session</span></h2>
 
-                    <div class="layer-status">
-                        <div><strong>Active Layers:</strong> <span id="active-layer-count">0</span></div>
+                    <div class="vocabulary-info">
                         <div><strong>Current Layer:</strong> <span id="current-layer-tag">None</span></div>
-                        <div><strong>Cards Remaining:</strong> <span id="layer-cards-remaining">0</span></div>
-                    </div>
-
-                    <div id="layer-selector" class="form-group">
-                        <label>Select Layer to Study:</label>
-                        <select id="layer-select" class="form-control" onchange="selectLayer()">
-                            <option value="">-- No layers available --</option>
-                        </select>
-                        <button class="btn btn-vocabulary" onclick="startLayerStudy()" disabled id="start-layer-btn">
-                            Start Layer Study
-                        </button>
-                        <button class="btn" onclick="refreshLayers()">🔄 Refresh Layers</button>
+                        <div><strong>Cards Remaining:</strong> <span id="vocab-cards-remaining">0</span></div>
                     </div>
 
                     <div id="vocabulary-card-display" class="card-display hidden">
@@ -507,9 +495,12 @@ async def home(request: Request):
                         <button class="btn btn-answer btn-easy" onclick="answerVocabularyCard(4)">🎯 Easy</button>
                     </div>
 
-                    <button class="btn btn-vocabulary hidden" id="complete-layer-btn" onclick="completeLayer()">
-                        Complete Layer & Next
-                    </button>
+                    <div class="vocab-controls hidden" id="vocab-controls">
+                        <button class="btn" onclick="checkVocabularySession()">🔄 Check Session</button>
+                        <button class="btn btn-vocabulary" onclick="completeVocabularySession()">
+                            Complete Session
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1504,11 +1495,11 @@ async def home(request: Request):
         // OLD answerVocabularyCard() and showVocabularyFeedback() removed
         // See new layer-based vocabulary functions below
 
-        // ===== NEW LAYER-BASED VOCABULARY FUNCTIONS =====
+        // ===== VOCABULARY STUDY SESSION FUNCTIONS =====
 
-        async function refreshLayers() {
+        async function checkVocabularySession() {
             try {
-                // Instead of calling active-layers endpoint, directly check for custom study session
+                // Check if there's an active custom study session
                 const response = await fetch('/api/cards-by-tag-and-state', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1522,7 +1513,7 @@ async def home(request: Request):
 
                 const result = await response.json();
                 if (result.success && result.cards && result.cards.length > 0) {
-                    // Extract layer tags from cards
+                    // Extract layer tags and find the longest one (active layer)
                     const layerTags = new Set();
                     result.cards.forEach(card => {
                         if (card.tags) {
@@ -1534,40 +1525,33 @@ async def home(request: Request):
                         }
                     });
 
-                    const layers = Array.from(layerTags).sort((a, b) => b.length - a.length); // Longest first
-                    vocabularySession.availableLayers = layers.map(tag => ({ tag, created_at: tag }));
+                    if (layerTags.size > 0) {
+                        const longestTag = Array.from(layerTags).sort((a, b) => b.length - a.length)[0];
 
-                    // Update layer count display
-                    document.getElementById('active-layer-count').textContent = layers.length;
+                        // Update UI to show active layer
+                        document.getElementById('current-layer-tag').textContent = longestTag;
+                        document.getElementById('vocab-status').textContent = `Layer: ${longestTag}`;
+                        document.getElementById('vocab-status').className = 'session-status status-active';
+                        document.getElementById('vocab-cards-remaining').textContent = result.cards.length;
 
-                    // Populate layer selector dropdown
-                    const layerSelect = document.getElementById('layer-select');
-                    layerSelect.innerHTML = '';
+                        // Show vocabulary controls
+                        document.getElementById('vocab-controls').classList.remove('hidden');
 
-                    if (layers.length === 0) {
-                        layerSelect.innerHTML = '<option value="">-- No layers available --</option>';
-                        document.getElementById('start-layer-btn').disabled = true;
-                    } else {
-                        layerSelect.innerHTML = '<option value="">-- Select a layer --</option>';
-                        // Sort layers in LIFO order (longest first for most specific)
-                        layers.forEach(tag => {
-                            const option = document.createElement('option');
-                            option.value = tag;
-                            option.textContent = tag;
-                            layerSelect.appendChild(option);
-                        });
+                        // Get first card if not already showing one
+                        if (!vocabularySession.currentCard) {
+                            await fetchVocabularyCard();
+                        }
                     }
-
-                    console.log(`Loaded ${layers.length} active layers`);
                 } else {
-                    // No layers found
-                    vocabularySession.availableLayers = [];
-                    document.getElementById('active-layer-count').textContent = '0';
-                    document.getElementById('layer-select').innerHTML = '<option value="">-- No layers available --</option>';
-                    document.getElementById('start-layer-btn').disabled = true;
+                    // No active vocabulary session
+                    document.getElementById('current-layer-tag').textContent = 'None';
+                    document.getElementById('vocab-status').textContent = 'Waiting for custom study session';
+                    document.getElementById('vocab-status').className = 'session-status status-waiting';
+                    document.getElementById('vocab-cards-remaining').textContent = '0';
+                    document.getElementById('vocab-controls').classList.add('hidden');
                 }
             } catch (error) {
-                console.error('Error refreshing layers:', error);
+                console.error('Error checking vocabulary session:', error);
             }
         }
 
