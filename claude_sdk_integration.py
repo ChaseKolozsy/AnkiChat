@@ -300,6 +300,11 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
 
         while self.polling_active:
             try:
+                # Check if polling was stopped (important for breaking out after session creation)
+                if not self.polling_active:
+                    logger.info("Polling stopped, exiting poll loop")
+                    break
+
                 # Get current layer tag from active grammar session
                 if self.grammar_session.current_card:
                     # Get note_id from card - if not present, fetch it using card_id
@@ -353,6 +358,9 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
                             logger.info(f"Expected total cards reached ({found_count}/{total_expected}). Creating custom study session...")
                             logger.info(f"(Initial: {getattr(self, 'initial_card_count', 0)} + New: {expected_word_count} = Total: {total_expected})")
                             await self._attempt_custom_session_creation()
+                            # IMPORTANT: Stop polling immediately after creating session to avoid collection lock conflicts
+                            # The polling loop will exit naturally on next iteration check
+                            break
                         else:
                             remaining_cards = total_expected - found_count
                             logger.info(f"Waiting for more cards ({found_count}/{total_expected}). Need {remaining_cards} more cards from Claude SDK.")
