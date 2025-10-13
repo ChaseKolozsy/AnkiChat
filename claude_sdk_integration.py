@@ -130,6 +130,8 @@ class ClaudeSDKIntegration:
         self.vocab_initialized: bool = False
         # Track current vocabulary card for nested layer generation
         self.current_vocabulary_card: Optional[Dict[str, Any]] = None
+        # Track last created vocabulary session for frontend retrieval
+        self.last_vocabulary_session: Optional[Dict[str, Any]] = None
         self._check_sdk_availability()
 
     def set_vocabulary_deck(self, deck_id: int):
@@ -1141,12 +1143,17 @@ FONTOS TAG INFORMÁCIÓ:
 
             if study_status == 200 and study_result.get('card_id'):
                 logger.info(f"Successfully started study session for custom deck {created_deck_id}")
-                return {
+                session_info = {
                     'success': True,
                     'custom_deck_id': created_deck_id,
                     'session_id': f"custom_session_{created_deck_id}_{int(time.time())}",
-                    'first_card': study_result
+                    'first_card': study_result,
+                    'layer_tag': layer_tag
                 }
+                # Store session info for frontend retrieval
+                self.last_vocabulary_session = session_info
+                logger.info(f"Stored vocabulary session info for frontend: {session_info}")
+                return session_info
             else:
                 logger.error(f"Failed to start study session for custom deck: {study_result}")
                 return {'success': False, 'error': f"Failed to start study session: {study_result}"}

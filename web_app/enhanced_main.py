@@ -1568,6 +1568,54 @@ async def home(request: Request):
 
         async function checkVocabularySession() {
             try {
+                // Step 0: First check if the backend has created a vocabulary session for us
+                try {
+                    const backendSessionResponse = await fetch('/api/get-vocabulary-session-status', {
+                        method: 'GET',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+
+                    const backendSessionResult = await backendSessionResponse.json();
+
+                    if (backendSessionResult.success && backendSessionResult.session_available) {
+                        console.log('✅ Backend has created a vocabulary session, loading it now...');
+                        const sessionInfo = backendSessionResult;
+
+                        // Extract session details
+                        const customDeckId = sessionInfo.custom_deck_id;
+                        const layerTag = sessionInfo.layer_tag;
+                        const firstCard = sessionInfo.first_card;
+
+                        console.log(`Backend session: deck_id=${customDeckId}, layer=${layerTag}`);
+
+                        // Update vocabulary session state
+                        vocabularySession.currentCustomDeckId = customDeckId;
+                        vocabularySession.currentLayer = layerTag;
+                        vocabularySession.isActive = true;
+                        vocabularySession.currentCard = firstCard;
+
+                        // Display the first card
+                        displayVocabularyCard(firstCard);
+
+                        // Update UI
+                        document.getElementById('vocabulary-card-display').classList.remove('hidden');
+                        document.getElementById('vocab-flip-container').classList.remove('hidden');
+                        document.getElementById('vocab-controls').classList.remove('hidden');
+                        document.getElementById('current-layer-tag').textContent = layerTag;
+                        document.getElementById('vocab-status').textContent = `Studying Layer: ${layerTag}`;
+                        document.getElementById('vocab-status').className = 'session-status status-active';
+
+                        // Clear the backend session so we don't reload it next time
+                        // (We'll handle this by setting the session to null on backend after retrieval)
+
+                        console.log('✅ Vocabulary session loaded and displayed');
+                        return;
+                    }
+                } catch (backendError) {
+                    console.log('Backend session check failed or no session available:', backendError);
+                    // Continue to client-side layer checking
+                }
+
                 // Step 1: Check client-side for layer tags (populated by Claude SDK)
                 if (!vocabularySession.availableLayers || vocabularySession.availableLayers.length === 0) {
                     console.log('No layer tags available in client session - waiting for Claude SDK to populate them');
@@ -2735,6 +2783,39 @@ async def submit_vocabulary_session(request: Request):
         result = await claude_integration.submit_vocabulary_session()
 
         return JSONResponse(result)
+
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)})
+
+@app.get("/api/get-vocabulary-session-status")
+async def get_vocabulary_session_status():
+    """Get the status of the last created vocabulary session and clear it after retrieval"""
+    global claude_integration
+
+    try:
+        if not claude_integration:
+            return JSONResponse({"success": False, "error": "Claude integration not available"})
+
+        # Retrieve the last created vocabulary session
+        session_info = claude_integration.last_vocabulary_session
+
+        if session_info:
+            # Clear the session info after retrieval so it's only returned once
+            claude_integration.last_vocabulary_session = None
+
+            return JSONResponse({
+                "success": True,
+                "session_available": True,
+                "custom_deck_id": session_info.get('custom_deck_id'),
+                "session_id": session_info.get('session_id'),
+                "first_card": session_info.get('first_card'),
+                "layer_tag": session_info.get('layer_tag')
+            })
+        else:
+            return JSONResponse({
+                "success": True,
+                "session_available": False
+            })
 
     except Exception as e:
         return JSONResponse({"success": False, "error": str(e)})
