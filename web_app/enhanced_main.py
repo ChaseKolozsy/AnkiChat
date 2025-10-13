@@ -946,13 +946,14 @@ async def home(request: Request):
                     console.warn('Failed to fetch initial counts, proceeding anyway');
                 }
 
-                // Start only grammar session initially
-                const response = await fetch('/api/start-session', {
+                // Start grammar session (uses existing dual-session endpoint but only starts grammar)
+                const response = await fetch('/api/start-dual-session', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         username: currentUser,
-                        deck_id: selectedGrammarDeck.id
+                        grammar_deck_id: selectedGrammarDeck.id,
+                        vocabulary_deck_id: selectedVocabularyDeck.id
                     })
                 });
 
