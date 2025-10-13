@@ -340,14 +340,20 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
                         new_count = 0
                         for card in tagged_cards:
                             card_id = self.vocabulary_queue._extract_card_id(card)
-                            if card_id and card_id not in self.vocabulary_queue.seen_card_ids:
-                                self.vocabulary_queue.seen_card_ids.add(card_id)
-                                self.vocabulary_queue.add_new_card(card)
-                                new_count += 1
+                            if card_id:
+                                logger.info(f"Checking card_id {card_id}: in seen_card_ids={card_id in self.vocabulary_queue.seen_card_ids}")
+                                if card_id not in self.vocabulary_queue.seen_card_ids:
+                                    self.vocabulary_queue.seen_card_ids.add(card_id)
+                                    self.vocabulary_queue.add_new_card(card)
+                                    new_count += 1
+                                else:
+                                    logger.info(f"Card {card_id} already in seen_card_ids, skipping")
 
                         if new_count > 0:
                             logger.info(f"Detected {new_count} new vocabulary cards with tag '{self.current_layer_tag}'")
                             self.words_in_current_layer += new_count
+                        else:
+                            logger.warning(f"Found {len(tagged_cards)} cards with tag '{self.current_layer_tag}' but all were already seen")
 
                 except ImportError as e:
                     # Fallback to old polling method if tag-based function not available
