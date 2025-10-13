@@ -351,8 +351,9 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
                             custom_session_result = await self._create_custom_study_session(self.current_layer_tag)
 
                             if custom_session_result.get('success'):
-                                logger.info(f"Successfully created custom study session for layer {self.current_layer_tag}")
-                                # Stop polling since we've created the session
+                                logger.info(f"Successfully created and started custom study session for layer {self.current_layer_tag}")
+                                logger.info(f"Custom deck ID: {custom_session_result.get('custom_deck_id')}")
+                                # Stop polling since we've created and started the session
                                 self.polling_active = False
                             else:
                                 logger.error(f"Failed to create custom study session: {custom_session_result.get('error')}")
@@ -1060,9 +1061,11 @@ FONTOS TAG INFORMÁCIÓ:
         return layer_groups
 
     async def _create_custom_study_session(self, layer_tag: str) -> Dict[str, Any]:
-        """Create a custom study session for cards with a specific layer tag using the Anki API"""
+        """Create a custom study session for cards with a specific layer tag and start studying it"""
         try:
-            # Use the MCP Anki API function to create custom study session
+            from AnkiClient.src.operations.study_ops import create_custom_study_session, study
+
+            # Parameters for creating custom study session with filtered cards
             custom_study_params = {
                 "new_limit_delta": 0,
                 "cram": {
@@ -1073,18 +1076,46 @@ FONTOS TAG INFORMÁCIÓ:
                 }
             }
 
-            result = mcp__anki_api__create_custom_study_session(
+            logger.info(f"Creating custom study session for layer {layer_tag} with params: {custom_study_params}")
+
+            # Create the custom study session
+            response_data, status_code = create_custom_study_session(
                 username="chase",
                 deck_id=self.vocab_deck_id,
-                custom_study_params=custom_study_params,
-                leave_open=False
+                custom_study_params=custom_study_params
             )
 
-            if result.get('success'):
-                logger.info(f"Created custom study session for layer {layer_tag}")
-                return {'success': True, 'session_id': result.get('session_id')}
+            if status_code != 200:
+                logger.error(f"Failed to create custom study session: {response_data}")
+                return {'success': False, 'error': str(response_data)}
+
+            # Extract the created deck ID
+            created_deck_id = response_data.get('created_deck_id')
+
+            if not created_deck_id:
+                logger.error("No deck ID returned for custom study session")
+                return {'success': False, 'error': 'No deck ID returned'}
+
+            logger.info(f"Custom study session created with deck ID: {created_deck_id}")
+
+            # Start a study session with the new custom deck
+            study_result, study_status = study(
+                deck_id=created_deck_id,
+                action="start",
+                username="chase"
+            )
+
+            if study_status == 200 and study_result.get('card_id'):
+                logger.info(f"Successfully started study session for custom deck {created_deck_id}")
+                return {
+                    'success': True,
+                    'custom_deck_id': created_deck_id,
+                    'session_id': f"custom_session_{created_deck_id}_{int(time.time())}",
+                    'first_card': study_result
+                }
             else:
-                return {'success': False, 'error': result.get('error', 'Unknown error')}
+                logger.error(f"Failed to start study session for custom deck: {study_result}")
+                return {'success': False, 'error': f"Failed to start study session: {study_result}"}
 
         except Exception as e:
             logger.error(f"Error creating custom study session for layer {layer_tag}: {e}")
