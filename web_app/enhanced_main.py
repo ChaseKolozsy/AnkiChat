@@ -1508,21 +1508,9 @@ async def home(request: Request):
 
         async function checkVocabularySession() {
             try {
-                // Step 1: Get ALL layer tags from the main vocabulary deck
-                const allLayersResponse = await fetch('/api/cards-by-tag-and-state', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        deck_id: selectedVocabularyDeck.id,
-                        username: currentUser,
-                        tag_prefix: 'layer_',
-                        state: 'new'
-                    })
-                });
-
-                const allLayersResult = await allLayersResponse.json();
-                if (!allLayersResult.success || !allLayersResult.cards || allLayersResult.cards.length === 0) {
-                    console.log('No layer tags found in vocabulary deck');
+                // Step 1: Check client-side for layer tags (populated by Claude SDK)
+                if (!vocabularySession.availableLayers || vocabularySession.availableLayers.length === 0) {
+                    console.log('No layer tags available in client session - waiting for Claude SDK to populate them');
                     document.getElementById('current-layer-tag').textContent = 'None';
                     document.getElementById('vocab-status').textContent = 'Waiting for vocabulary definitions...';
                     document.getElementById('vocab-status').className = 'session-status status-waiting';
@@ -1531,26 +1519,8 @@ async def home(request: Request):
                     return;
                 }
 
-                // Extract all unique layer tags from vocabulary deck
-                const allLayerTags = new Set();
-                const cardsByLayer = {};
-
-                allLayersResult.cards.forEach(card => {
-                    if (card.tags) {
-                        card.tags.forEach(tag => {
-                            if (tag.startsWith('layer_')) {
-                                allLayerTags.add(tag);
-                                if (!cardsByLayer[tag]) {
-                                    cardsByLayer[tag] = [];
-                                }
-                                cardsByLayer[tag].push(card);
-                            }
-                        });
-                    }
-                });
-
-                // Sort all layers by length (longest first) - LIFO ordering
-                const sortedAllLayers = Array.from(allLayerTags).sort((a, b) => b.length - a.length);
+                // Sort client-side layers by length (longest first) - LIFO ordering
+                const sortedAllLayers = vocabularySession.availableLayers.sort((a, b) => b.length - a.length);
 
                 // Initialize completed layers tracking if not exists
                 if (!vocabularySession.completedLayers) {
@@ -1573,10 +1543,10 @@ async def home(request: Request):
                 }
 
                 console.log(`Next layer to study: ${nextLayerToStudy}`);
-                console.log(`Available layers: ${sortedAllLayers.join(', ')}`);
+                console.log(`Available layers (client-side): ${sortedAllLayers.join(', ')}`);
                 console.log(`Completed layers: ${vocabularySession.completedLayers.join(', ')}`);
 
-                // Step 2: Check if there's an active custom study session for this layer
+                // Step 2: Check if there's an active custom study session (server-side deck check is OK)
                 const decksResponse = await fetch('/api/decks', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1608,17 +1578,15 @@ async def home(request: Request):
                     await startVocabularySessionFromDeck(customStudyDeck.id);
                 }
 
-                // Update UI with comprehensive layer information
+                // Update UI with client-side layer information
                 document.getElementById('current-layer-tag').textContent = nextLayerToStudy;
                 document.getElementById('vocab-status').textContent = `Layer: ${nextLayerToStudy}`;
                 document.getElementById('vocab-status').className = 'session-status status-active';
-                document.getElementById('vocab-cards-remaining').textContent = cardsByLayer[nextLayerToStudy]?.length || '0';
+                document.getElementById('vocab-cards-remaining').textContent = vocabularySession.cardsByLayer?.[nextLayerToStudy]?.length || '?';
 
-                // Store comprehensive layer information
+                // Store layer information (all client-side)
                 vocabularySession.currentLayer = nextLayerToStudy;
-                vocabularySession.availableLayers = sortedAllLayers;
-                vocabularySession.cardsByLayer = cardsByLayer;
-                vocabularySession.cardsRemaining = cardsByLayer[nextLayerToStudy]?.length || 0;
+                vocabularySession.cardsRemaining = vocabularySession.cardsByLayer?.[nextLayerToStudy]?.length || 0;
 
                 // Show vocabulary controls
                 document.getElementById('vocab-controls').classList.remove('hidden');
