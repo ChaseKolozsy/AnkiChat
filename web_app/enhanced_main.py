@@ -1371,13 +1371,29 @@ async def home(request: Request):
             updateSessionStatus('grammar-status', 'Paused for Claude', 'status-paused');
 
             try {
+                // Generate layer tag based on current grammar card
+                const currentGrammarCard = grammarSession.currentCard;
+                const grammarNoteId = currentGrammarCard?.note_id || currentGrammarCard?.id || Date.now();
+                const layerTag = `layer_${grammarNoteId}`;
+
+                // Store layer tag in client-side availableLayers immediately
+                if (!vocabularySession.availableLayers) {
+                    vocabularySession.availableLayers = [];
+                }
+                if (!vocabularySession.availableLayers.includes(layerTag)) {
+                    vocabularySession.availableLayers.push(layerTag);
+                    console.log(`Generated and stored layer tag: ${layerTag}`);
+                    console.log(`Available layers now: ${vocabularySession.availableLayers.join(', ')}`);
+                }
+
                 const response = await fetch('/api/request-definitions', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         username: currentUser,
                         words: words.split(',').map(w => w.trim()),
-                        card_context: grammarSession.currentCard
+                        card_context: grammarSession.currentCard,
+                        layer_tag: layerTag  // Pass the generated layer tag to Claude Code
                     })
                 });
 
@@ -1386,11 +1402,11 @@ async def home(request: Request):
                     document.getElementById('claude-status').classList.remove('hidden');
                     grammarSession.paused = true;
 
-                    // Refresh layers after a delay to allow card creation
-                    setTimeout(async () => {
-                        await refreshLayers();
-                        console.log('Refreshed layers after grammar definition request');
-                    }, 3000);
+                    console.log(`Successfully sent vocabulary definition request with layer tag: ${layerTag}`);
+                    console.log('Claude Code will create vocabulary cards with this layer tag');
+
+                    // No need to refresh layers since we already stored the layer tag client-side
+                    // The vocabulary session will automatically detect the new layer when polling
                 } else {
                     alert('Error requesting definitions: ' + result.error);
                     claudeProcessing = false;
@@ -1992,6 +2008,22 @@ async def home(request: Request):
             }
 
             try {
+                // Generate nested layer tag based on current vocabulary card and current layer
+                const currentVocabCard = vocabularySession.currentCard;
+                const vocabNoteId = currentVocabCard?.note_id || currentVocabCard?.id || Date.now();
+                const currentLayerTag = vocabularySession.currentLayer;
+                const nestedLayerTag = `${currentLayerTag}_${vocabNoteId}`;
+
+                // Store nested layer tag in client-side availableLayers immediately
+                if (!vocabularySession.availableLayers) {
+                    vocabularySession.availableLayers = [];
+                }
+                if (!vocabularySession.availableLayers.includes(nestedLayerTag)) {
+                    vocabularySession.availableLayers.push(nestedLayerTag);
+                    console.log(`Generated and stored nested layer tag: ${nestedLayerTag}`);
+                    console.log(`Available layers now: ${vocabularySession.availableLayers.join(', ')}`);
+                }
+
                 // Close current custom study session before requesting definitions
                 if (vocabularySession.currentCustomDeckId) {
                     await fetch('/api/close-custom-study-session', {
@@ -2012,34 +2044,26 @@ async def home(request: Request):
                         username: currentUser,
                         words: words.split(',').map(w => w.trim()),
                         card_context: vocabularySession.currentCard,
-                        priority: true
+                        priority: true,
+                        layer_tag: nestedLayerTag  // Pass the generated nested layer tag to Claude Code
                     })
                 });
 
                 const result = await response.json();
                 if (result.success) {
                     alert('Nested vocabulary definition request sent to Claude SDK. New nested layer will be created.');
+                    console.log(`Successfully sent nested vocabulary definition request with layer tag: ${nestedLayerTag}`);
+                    console.log('Claude Code will create nested vocabulary cards with this layer tag');
 
-                    // Wait a moment for cards to be created, then refresh layers
-                    setTimeout(async () => {
-                        await refreshLayers();
+                    // Reset current card and vocabulary session state
+                    vocabularySession.currentCard = null;
+                    vocabularySession.isActive = false;
+                    document.getElementById('vocabulary-card-display').classList.add('hidden');
+                    document.getElementById('vocab-define-section').classList.add('hidden');
+                    document.getElementById('vocabulary-answers').classList.add('hidden');
 
-                        // Auto-select the newest layer (nested layer will be first in LIFO order)
-                        if (vocabularySession.availableLayers.length > 0) {
-                            const layerSelect = document.getElementById('layer-select');
-                            const nestedLayer = vocabularySession.availableLayers[0];
-                            layerSelect.value = nestedLayer.tag;
-                            selectLayer();
-
-                            // Show layer selector
-                            document.getElementById('layer-selector').classList.remove('hidden');
-                            document.getElementById('vocabulary-card-display').classList.add('hidden');
-                            document.getElementById('vocab-define-section').classList.add('hidden');
-                            document.getElementById('vocabulary-answers').classList.add('hidden');
-
-                            alert(`Nested layer ${nestedLayer.tag} is ready. Click "Start Layer Study" to begin.`);
-                        }
-                    }, 3000); // Wait 3 seconds for card creation
+                    // No need to refresh layers since we already stored the nested layer tag client-side
+                    // The vocabulary session will automatically detect the new nested layer when polling
                 } else {
                     alert('Error requesting vocabulary definitions: ' + result.error);
                 }
