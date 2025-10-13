@@ -1143,11 +1143,30 @@ FONTOS TAG INFORMÁCIÓ:
 
             if study_status == 200 and study_result.get('card_id'):
                 logger.info(f"Successfully started study session for custom deck {created_deck_id}")
+
+                # Fetch note_id if not present in study_result
+                card_id = study_result.get('card_id')
+                note_id = study_result.get('note_id')
+                if not note_id and card_id:
+                    try:
+                        from AnkiClient.src.operations.card_ops import get_card_contents
+                        full_card = get_card_contents(card_id=card_id, username="chase")
+                        note_id = full_card.get('note_id')
+                        logger.info(f"Fetched note_id {note_id} for vocabulary card {card_id}")
+                    except Exception as e:
+                        logger.warning(f"Failed to fetch note_id for card {card_id}: {e}")
+                        note_id = None
+
+                # Add note_id to first_card
+                first_card_with_note_id = {**study_result}
+                if note_id:
+                    first_card_with_note_id['note_id'] = note_id
+
                 session_info = {
                     'success': True,
                     'custom_deck_id': created_deck_id,
                     'session_id': f"custom_session_{created_deck_id}_{int(time.time())}",
-                    'first_card': study_result,
+                    'first_card': first_card_with_note_id,
                     'layer_tag': layer_tag
                 }
                 # Store session info for frontend retrieval

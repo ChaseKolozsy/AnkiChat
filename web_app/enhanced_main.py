@@ -2129,9 +2129,16 @@ async def home(request: Request):
 
                 const result = await response.json();
                 if (result.success) {
-                    // Update the card display with the flipped card
-                    vocabularySession.currentCard = result;
-                    displayVocabularyCard(result);
+                    // Merge flip result with existing card data to preserve card_id and note_id
+                    const flippedCard = {
+                        ...vocabularySession.currentCard,  // Keep original card_id, note_id, front
+                        back: result.back,                  // Add back fields from flip
+                        ease_options: result.ease_options,  // Add ease options
+                        media_files: result.media_files     // Add media files
+                    };
+
+                    vocabularySession.currentCard = flippedCard;
+                    displayVocabularyCard(flippedCard);
 
                     // Update flip button text
                     flipButton.textContent = '✅ Flipped';
