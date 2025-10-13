@@ -1319,9 +1319,9 @@ async def home(request: Request):
 
             let html = '';
 
-            // Handle full card contents from card_ops (entire card display)
+            // Handle different card formats from various APIs
             if (card.fields) {
-                // Standard fields structure
+                // Standard fields structure from card_ops
                 Object.keys(card.fields).forEach(fieldName => {
                     if (card.fields[fieldName] && card.fields[fieldName].trim()) {
                         html += `
@@ -1332,12 +1332,40 @@ async def home(request: Request):
                         `;
                     }
                 });
+            } else if (card.front && typeof card.front === 'object') {
+                // Study API format with front/back structure
+                // Show front fields
+                Object.keys(card.front).forEach(fieldName => {
+                    if (card.front[fieldName] && card.front[fieldName].trim()) {
+                        html += `
+                            <div class="card-field">
+                                <div class="field-label">${fieldName}</div>
+                                <div class="field-content">${card.front[fieldName]}</div>
+                            </div>
+                        `;
+                    }
+                });
+
+                // If card has back fields (after flip), show them too
+                if (card.back && typeof card.back === 'object') {
+                    html += '<hr style="margin: 10px 0; border: 1px solid #444;">';
+                    Object.keys(card.back).forEach(fieldName => {
+                        if (card.back[fieldName] && card.back[fieldName].trim()) {
+                            html += `
+                                <div class="card-field">
+                                    <div class="field-label">${fieldName}</div>
+                                    <div class="field-content">${card.back[fieldName]}</div>
+                                </div>
+                            `;
+                        }
+                    });
+                }
             } else if (card && typeof card === 'object') {
-                // Direct field iteration (entire card content)
+                // Direct field iteration (fallback for other formats)
                 for (const [field, value] of Object.entries(card)) {
                     // Skip metadata fields and empty values
                     if (field !== 'card_id' && field !== 'id' && field !== 'note_id' &&
-                        field !== 'media_files' && field !== 'ease_options' &&
+                        field !== 'media_files' && field !== 'ease_options' && field !== 'front' && field !== 'back' &&
                         value && typeof value === 'string' && value.trim() !== '') {
 
                         // Clean up field names for display
@@ -1588,6 +1616,27 @@ async def home(request: Request):
 
                         console.log(`Backend session: deck_id=${customDeckId}, layer=${layerTag}`);
 
+                        // Get card count for this layer
+                        let cardCount = 0;
+                        try {
+                            const countResponse = await fetch('/api/cards-by-tag-and-state', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    deck_id: selectedVocabularyDeck.id,
+                                    username: currentUser,
+                                    tag: layerTag,
+                                    state: 'new'
+                                })
+                            });
+                            const countResult = await countResponse.json();
+                            if (countResult.success && countResult.cards) {
+                                cardCount = countResult.cards.length;
+                            }
+                        } catch (e) {
+                            console.warn('Could not get card count:', e);
+                        }
+
                         // Update vocabulary session state
                         vocabularySession.currentCustomDeckId = customDeckId;
                         vocabularySession.currentLayer = layerTag;
@@ -1604,11 +1653,9 @@ async def home(request: Request):
                         document.getElementById('current-layer-tag').textContent = layerTag;
                         document.getElementById('vocab-status').textContent = `Studying Layer: ${layerTag}`;
                         document.getElementById('vocab-status').className = 'session-status status-active';
+                        document.getElementById('vocab-cards-remaining').textContent = cardCount.toString();
 
-                        // Clear the backend session so we don't reload it next time
-                        // (We'll handle this by setting the session to null on backend after retrieval)
-
-                        console.log('✅ Vocabulary session loaded and displayed');
+                        console.log(`✅ Vocabulary session loaded and displayed (${cardCount} cards in layer)`);
                         return;
                     }
                 } catch (backendError) {
