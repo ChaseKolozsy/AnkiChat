@@ -2911,27 +2911,45 @@ async def study_endpoint(request: Request):
                     "no_more_cards": True
                 })
 
-            # Success - return the card or result
-            response_data = {
-                "success": True if result.get('card_id') or result.get('front') else False,
-            }
-
             # Handle different response formats from study_ops
             if action == 'start':
-                response_data['card'] = result
+                response_data = {
+                    "success": True if result.get('card_id') or result.get('front') else False,
+                    "card": result
+                }
             elif action == 'flip':
-                response_data['front'] = result.get('front', {})
-                response_data['back'] = result.get('back', {})
-                response_data['ease_options'] = result.get('ease_options', {})
-                response_data['card_id'] = result.get('card_id')
+                response_data = {
+                    "success": True if result.get('card_id') else False,
+                    "front": result.get('front', {}),
+                    "back": result.get('back', {}),
+                    "ease_options": result.get('ease_options', {}),
+                    "card_id": result.get('card_id')
+                }
             elif action in ['1', '2', '3', '4']:
                 # Answer action - return next card
                 if result.get('card_id'):
-                    response_data['card'] = result
-                    response_data['front'] = result.get('front', {})
+                    response_data = {
+                        "success": True,
+                        "card": result,
+                        "front": result.get('front', {})
+                    }
                 else:
-                    response_data['message'] = 'No more cards in this session'
-                    response_data['no_more_cards'] = True
+                    response_data = {
+                        "success": False,
+                        "message": 'No more cards in this session',
+                        "no_more_cards": True
+                    }
+            elif action == 'close':
+                response_data = {
+                    "success": True,
+                    "message": "Session closed"
+                }
+            else:
+                # Fallback for unknown actions
+                response_data = {
+                    "success": False,
+                    "error": f"Unknown action: {action}"
+                }
 
             return JSONResponse(response_data)
         else:
