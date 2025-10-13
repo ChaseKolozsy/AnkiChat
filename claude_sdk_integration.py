@@ -293,8 +293,9 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
     async def _poll_vocabulary_cards(self):
         """Poll for new vocabulary cards using tag-based filtering"""
         logger.info("Starting tag-based vocabulary card polling...")
-        self.current_layer_tag = None
-        self.words_in_current_layer = 0
+        # Don't reset words_in_current_layer - it should be set by the definition request
+        # self.current_layer_tag = None
+        # self.words_in_current_layer = 0
         self.cards_processed_in_current_layer = 0
 
         while self.polling_active:
@@ -336,24 +337,30 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
                     logger.info(f"Response details: length={len(tagged_cards) if hasattr(tagged_cards, '__len__') else 'N/A'}")
 
                     if isinstance(tagged_cards, list) and tagged_cards:
-                        # Add new cards to the vocabulary queue
-                        new_count = 0
-                        for card in tagged_cards:
-                            card_id = self.vocabulary_queue._extract_card_id(card)
-                            if card_id:
-                                logger.info(f"Checking card_id {card_id}: in seen_card_ids={card_id in self.vocabulary_queue.seen_card_ids}")
-                                if card_id not in self.vocabulary_queue.seen_card_ids:
-                                    self.vocabulary_queue.seen_card_ids.add(card_id)
-                                    self.vocabulary_queue.add_new_card(card)
-                                    new_count += 1
-                                else:
-                                    logger.info(f"Card {card_id} already in seen_card_ids, skipping")
+                        found_count = len(tagged_cards)
+                        logger.info(f"Found {found_count} cards with tag '{self.current_layer_tag}'")
 
-                        if new_count > 0:
-                            logger.info(f"Detected {new_count} new vocabulary cards with tag '{self.current_layer_tag}'")
-                            self.words_in_current_layer += new_count
+                        # Check if we have all expected cards for this layer
+                        expected_word_count = self.words_in_current_layer
+
+                        # Only create session if we have a valid expected count and found all cards
+                        if expected_word_count > 0 and found_count >= expected_word_count:
+                            logger.info(f"All expected cards found ({found_count}/{expected_word_count}). Creating custom study session...")
+
+                            # Create custom study session with these cards
+                            custom_session_result = await self._create_custom_study_session(self.current_layer_tag)
+
+                            if custom_session_result.get('success'):
+                                logger.info(f"Successfully created custom study session for layer {self.current_layer_tag}")
+                                # Stop polling since we've created the session
+                                self.polling_active = False
+                            else:
+                                logger.error(f"Failed to create custom study session: {custom_session_result.get('error')}")
                         else:
-                            logger.warning(f"Found {len(tagged_cards)} cards with tag '{self.current_layer_tag}' but all were already seen")
+                            if expected_word_count == 0:
+                                logger.warning(f"Expected word count is 0, waiting for definition request to set proper count")
+                            else:
+                                logger.info(f"Waiting for more cards ({found_count}/{expected_word_count})")
 
                 except ImportError as e:
                     # Fallback to old polling method if tag-based function not available
@@ -1053,10 +1060,9 @@ FONTOS TAG INFORMÁCIÓ:
         return layer_groups
 
     async def _create_custom_study_session(self, layer_tag: str) -> Dict[str, Any]:
-        """Create a custom study session for cards with a specific layer tag"""
+        """Create a custom study session for cards with a specific layer tag using the Anki API"""
         try:
-            from AnkiClient.src.operations.deck_ops import create_custom_study_session
-
+            # Use the MCP Anki API function to create custom study session
             custom_study_params = {
                 "new_limit_delta": 0,
                 "cram": {
@@ -1067,7 +1073,7 @@ FONTOS TAG INFORMÁCIÓ:
                 }
             }
 
-            result = create_custom_study_session(
+            result = mcp__anki_api__create_custom_study_session(
                 username="chase",
                 deck_id=self.vocab_deck_id,
                 custom_study_params=custom_study_params,
