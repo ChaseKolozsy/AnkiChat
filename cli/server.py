@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 _server_process: Optional[subprocess.Popen] = None
 
 
-def ensure_server_running(host: str = 'localhost', port: int = 8888) -> str:
+def ensure_server_running(host: str = 'localhost', port: int = 8000) -> str:
     """
     Start web app server if not running, return server URL
 
@@ -128,7 +128,7 @@ def cleanup_server():
             _server_process = None
 
 
-def is_server_running(host: str = 'localhost', port: int = 8888) -> bool:
+def is_server_running(host: str = 'localhost', port: int = 8000) -> bool:
     """
     Check if server is running
 

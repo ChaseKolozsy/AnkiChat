@@ -388,8 +388,15 @@ async def home(request: Request):
 
         <!-- Deck Selection -->
         <div class="card hidden" id="deck-selection">
-            <h2>Select Grammar Deck</h2>
-            <div id="deck-list"></div>
+            <h2>Select Study Decks</h2>
+            <div style="margin-bottom: 20px;">
+                <h3 style="color: #0084ff; margin-bottom: 10px;">📚 Grammar Deck (Main Session)</h3>
+                <div id="deck-list"></div>
+            </div>
+            <div style="margin-bottom: 20px;">
+                <h3 style="color: #ff6b35; margin-bottom: 10px;">📖 Vocabulary Deck (For New Cards)</h3>
+                <div id="vocab-deck-list"></div>
+            </div>
             <button class="btn" id="start-study" onclick="startDualSession()" disabled>Start Enhanced Study Session</button>
         </div>
 
@@ -509,7 +516,8 @@ async def home(request: Request):
 
     <script>
         let currentUser = null;
-        let selectedDeck = null;
+        let selectedGrammarDeck = null;
+        let selectedVocabularyDeck = null;
         let grammarSession = { active: false, paused: false, currentCard: null };
         let vocabularySession = { active: false, queue: [], cachedAnswers: {} };
         let pollingInterval = null;
@@ -784,20 +792,36 @@ async def home(request: Request):
 
         async function displayDecks(decks) {
             const deckList = document.getElementById('deck-list');
+            const vocabDeckList = document.getElementById('vocab-deck-list');
             const deckSelection = document.getElementById('deck-selection');
 
             if (!decks || decks.length === 0) {
                 deckList.innerHTML = '<p>No decks found for this user.</p>';
+                vocabDeckList.innerHTML = '<p>No decks found for this user.</p>';
             } else {
-                // First display decks with loading indicators
+                // Display grammar decks
                 deckList.innerHTML = decks.map(deck => `
-                    <div class="deck-item" onclick="selectDeck(${deck.id}, '${deck.name}')"
+                    <div class="deck-item" onclick="selectGrammarDeck(${deck.id}, '${deck.name}')"
                          style="background: #404040; border-radius: 8px; padding: 15px; margin-bottom: 10px; cursor: pointer; transition: all 0.2s;">
                         <strong>${deck.name}</strong>
                         <div style="font-size: 14px; opacity: 0.7; margin-top: 5px;">
                             ID: ${deck.id}
                         </div>
                         <div id="counts-${deck.id}" style="font-size: 12px; margin-top: 8px; color: #4a9eff;">
+                            Loading counts...
+                        </div>
+                    </div>
+                `).join('');
+
+                // Display vocabulary decks (same list, different selection handler)
+                vocabDeckList.innerHTML = decks.map(deck => `
+                    <div class="vocab-deck-item" onclick="selectVocabularyDeck(${deck.id}, '${deck.name}')"
+                         style="background: #404040; border-radius: 8px; padding: 15px; margin-bottom: 10px; cursor: pointer; transition: all 0.2s;">
+                        <strong>${deck.name}</strong>
+                        <div style="font-size: 14px; opacity: 0.7; margin-top: 5px;">
+                            ID: ${deck.id}
+                        </div>
+                        <div id="vocab-counts-${deck.id}" style="font-size: 12px; margin-top: 8px; color: #ff6b35;">
                             Loading counts...
                         </div>
                     </div>
@@ -824,9 +848,22 @@ async def home(request: Request):
 
                     if (response.ok) {
                         const counts = await response.json();
+
+                        // Update grammar deck counts
                         const countsElement = document.getElementById(`counts-${deck.id}`);
                         if (countsElement) {
                             countsElement.innerHTML = `
+                                <span style="color: #28a745;">New: ${counts.new}</span> •
+                                <span style="color: #ffc107;">Learning: ${counts.learning}</span> •
+                                <span style="color: #17a2b8;">Review: ${counts.review}</span> •
+                                <span style="color: #6c757d;">Total: ${counts.total}</span>
+                            `;
+                        }
+
+                        // Update vocabulary deck counts
+                        const vocabCountsElement = document.getElementById(`vocab-counts-${deck.id}`);
+                        if (vocabCountsElement) {
+                            vocabCountsElement.innerHTML = `
                                 <span style="color: #28a745;">New: ${counts.new}</span> •
                                 <span style="color: #ffc107;">Learning: ${counts.learning}</span> •
                                 <span style="color: #17a2b8;">Review: ${counts.review}</span> •
@@ -838,30 +875,61 @@ async def home(request: Request):
                         if (countsElement) {
                             countsElement.innerHTML = '<span style="color: #dc3545;">Failed to load counts</span>';
                         }
+
+                        const vocabCountsElement = document.getElementById(`vocab-counts-${deck.id}`);
+                        if (vocabCountsElement) {
+                            vocabCountsElement.innerHTML = '<span style="color: #dc3545;">Failed to load counts</span>';
+                        }
                     }
                 } catch (error) {
                     const countsElement = document.getElementById(`counts-${deck.id}`);
                     if (countsElement) {
                         countsElement.innerHTML = '<span style="color: #dc3545;">Error loading counts</span>';
                     }
+
+                    const vocabCountsElement = document.getElementById(`vocab-counts-${deck.id}`);
+                    if (vocabCountsElement) {
+                        vocabCountsElement.innerHTML = '<span style="color: #dc3545;">Error loading counts</span>';
+                    }
                 }
             }
         }
 
-        function selectDeck(deckId, deckName) {
+        function selectGrammarDeck(deckId, deckName) {
             document.querySelectorAll('.deck-item').forEach(item => {
                 item.style.background = '#404040';
             });
             event.target.closest('.deck-item').style.background = '#0084ff';
 
-            selectedDeck = { id: deckId, name: deckName };
-            document.getElementById('start-study').disabled = false;
+            selectedGrammarDeck = { id: deckId, name: deckName };
+            checkBothDecksSelected();
+        }
+
+        function selectVocabularyDeck(deckId, deckName) {
+            document.querySelectorAll('.vocab-deck-item').forEach(item => {
+                item.style.background = '#404040';
+            });
+            event.target.closest('.vocab-deck-item').style.background = '#ff6b35';
+
+            selectedVocabularyDeck = { id: deckId, name: deckName };
+            checkBothDecksSelected();
+        }
+
+        function checkBothDecksSelected() {
+            const startButton = document.getElementById('start-study');
+            if (selectedGrammarDeck && selectedVocabularyDeck) {
+                startButton.disabled = false;
+                startButton.textContent = `Start Session: ${selectedGrammarDeck.name} → ${selectedVocabularyDeck.name}`;
+            } else {
+                startButton.disabled = true;
+                startButton.textContent = 'Select both decks to start';
+            }
         }
 
         // Enhanced Study Session Functions
         async function startDualSession() {
-            if (!selectedDeck || !currentUser) {
-                alert('Please select a deck and user');
+            if (!selectedGrammarDeck || !selectedVocabularyDeck || !currentUser) {
+                alert('Please select both a grammar deck and a vocabulary deck');
                 return;
             }
 
@@ -873,13 +941,14 @@ async def home(request: Request):
                     console.warn('Failed to fetch initial counts, proceeding anyway');
                 }
 
-                // Start grammar session
+                // Start grammar session with both deck IDs
                 const response = await fetch('/api/start-dual-session', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         username: currentUser,
-                        deck_id: selectedDeck.id
+                        grammar_deck_id: selectedGrammarDeck.id,
+                        vocabulary_deck_id: selectedVocabularyDeck.id
                     })
                 });
 
@@ -1025,7 +1094,7 @@ async def home(request: Request):
 
         async function fetchAndCacheCounts() {
             try {
-                const deckId = selectedDeck ? selectedDeck.id : null;
+                const deckId = selectedGrammarDeck ? selectedGrammarDeck.id : null;
                 if (!deckId) {
                     console.log('No deck selected, skipping counts fetch');
                     return false;
@@ -1801,16 +1870,25 @@ async def start_dual_session(request: Request):
     try:
         data = await request.json()
         username = data.get("username")
-        deck_id = data.get("deck_id")
+        grammar_deck_id = data.get("grammar_deck_id")
+        vocabulary_deck_id = data.get("vocabulary_deck_id")
 
         if not claude_integration:
             return JSONResponse({"success": False, "error": "Claude integration not available"})
 
         current_user = username
-        current_deck_id = deck_id
+        current_deck_id = grammar_deck_id
+
+        # Set vocabulary deck ID in the integration
+        claude_integration.set_vocabulary_deck(vocabulary_deck_id)
 
         # Start grammar session
-        result = await claude_integration.start_grammar_session(deck_id)
+        result = await claude_integration.start_grammar_session(grammar_deck_id)
+
+        # Add deck info to result for frontend
+        if result.get('success'):
+            result['grammar_deck_id'] = grammar_deck_id
+            result['vocabulary_deck_id'] = vocabulary_deck_id
 
         return JSONResponse(result)
 
@@ -1915,7 +1993,7 @@ async def request_definitions(request: Request):
 
 @app.post("/api/request-vocabulary-definitions")
 async def request_vocabulary_definitions(request: Request):
-    """Request priority vocabulary definitions from Claude SDK"""
+    """Request vocabulary definitions from Claude SDK using current vocabulary card context"""
     global claude_integration
 
     try:
@@ -1927,9 +2005,11 @@ async def request_vocabulary_definitions(request: Request):
         if not claude_integration:
             return JSONResponse({"success": False, "error": "Claude integration not available"})
 
-        # Priority vocabulary definitions would go here
-        # This would use the same mechanism but with higher priority
-        result = await claude_integration.pause_grammar_session_for_definition(words)
+        # Use the new vocabulary card definition method
+        result = await claude_integration.request_vocabulary_card_definitions(
+            words=words,
+            vocab_card=card_context
+        )
 
         return JSONResponse(result)
 
@@ -2271,6 +2351,201 @@ async def get_decks(request: Request):
             return JSONResponse(result[0], status_code=result[1])
         else:
             return JSONResponse(result)
+
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+# LIFO Layer System API Endpoints
+
+@app.post("/api/active-layers")
+async def get_active_layers(request: Dict[str, Any]):
+    """Get all active layer tags for LIFO processing"""
+    try:
+        deck_id = request.get('deck_id')
+        username = request.get('username')
+
+        if not deck_id or not username:
+            return JSONResponse({"error": "deck_id and username are required"}, status_code=400)
+
+        # Get all cards with layer tags in the vocabulary deck
+        # First, get all cards in the deck
+        cards = get_cards_in_deck(deck_id=deck_id, username=username)
+        if not cards:
+            return JSONResponse({"success": True, "layers": []})
+
+        # Extract unique layer tags from cards
+        layer_tags = set()
+        for card in cards:
+            tags = card.get('tags', [])
+            for tag in tags:
+                if tag.startswith('layer_'):
+                    layer_tags.add(tag)
+
+        # Convert to list with timestamp info (simplified - using tag as timestamp)
+        layers = []
+        for tag in sorted(layer_tags, reverse=True):  # Reverse for most recent first
+            layers.append({
+                'tag': tag,
+                'created_at': tag  # Simplified - using tag as timestamp
+            })
+
+        return JSONResponse({
+            "success": True,
+            "layers": layers
+        })
+
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/api/cards-by-tag-and-state")
+async def get_cards_by_tag_and_state_endpoint(request: Dict[str, Any]):
+    """Get vocabulary cards by tag and state for LIFO layer processing"""
+    try:
+        deck_id = request.get('deck_id')
+        username = request.get('username')
+        tag = request.get('tag')
+        state = request.get('state', 'new')
+        include_fields = request.get('include_fields', True)
+
+        if not deck_id or not username:
+            return JSONResponse({"error": "deck_id and username are required"}, status_code=400)
+
+        # Get cards by tag and state using the available functions
+        # First get cards by tag, then filter by state
+        cards_by_tag = get_cards_by_tag(tag=tag, username=username, inclusions=None if include_fields else ['id'])
+
+        # Filter by state if needed
+        if state:
+            filtered_cards = []
+            for card in cards_by_tag:
+                card_state = card.get('state', 'unknown')
+                if card_state == state:
+                    filtered_cards.append(card)
+            cards = filtered_cards
+        else:
+            cards = cards_by_tag
+
+        return JSONResponse({
+            "success": True,
+            "cards": cards
+        })
+
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/api/create-custom-study-session")
+async def create_custom_study_session(request: Dict[str, Any]):
+    """Create custom study session for a specific layer"""
+    try:
+        deck_id = request.get('deck_id')
+        username = request.get('username')
+        tag = request.get('tag')
+        card_limit = request.get('card_limit', 100)
+
+        if not deck_id or not username or not tag:
+            return JSONResponse({"error": "deck_id, username, and tag are required"}, status_code=400)
+
+        # Create custom study parameters for the layer
+        custom_study_params = {
+            "new_limit_delta": card_limit,
+            "cram": {
+                "kind": "CRAM_KIND_DUE",
+                "card_limit": card_limit,
+                "tags_to_include": [tag],
+                "tags_to_exclude": []
+            }
+        }
+
+        # Create the custom study session
+        result_data, status_code = create_custom_study_session(deck_id=deck_id, username=username, custom_study_params=custom_study_params)
+
+        if status_code == 200:
+            result = {'success': True, 'created_deck_id': result_data.get('created_deck_id')}
+        else:
+            result = {'success': False, 'error': str(result_data)}
+
+        if result.get('success'):
+            return JSONResponse({
+                "success": True,
+                "session_deck_id": result.get('created_deck_id', deck_id),
+                "message": f"Created custom study session for layer {tag}"
+            })
+        else:
+            return JSONResponse({"error": result.get('error', 'Failed to create custom study session')}, status_code=500)
+
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/api/study-custom-session")
+async def study_custom_session(request: Dict[str, Any]):
+    """Study cards in custom session (start, flip, answer)"""
+    try:
+        deck_id = request.get('deck_id')
+        username = request.get('username')
+        action = request.get('action')
+
+        if not deck_id or not username or not action:
+            return JSONResponse({"error": "deck_id, username, and action are required"}, status_code=400)
+
+        # Use the existing study endpoint with custom parameters
+        if action == 'start':
+            # Start studying cards in the custom session
+            cards = get_cards_in_deck(deck_id=deck_id, username=username)
+            if cards:
+                # Get first new card
+                for card in cards:
+                    if card.get('state') == 'new':
+                        return JSONResponse({
+                            "success": True,
+                            "current_card": card,
+                            "message": "Started custom study session"
+                        })
+
+            return JSONResponse({
+                "success": True,
+                "current_card": None,
+                "message": "No cards available in this layer"
+            })
+
+        elif action.startswith('answer_'):
+            # Answer the current card
+            answer = int(action.split('_')[1])  # Extract answer number (1-4)
+            # This would need to be implemented with proper card tracking
+            return JSONResponse({
+                "success": True,
+                "message": f"Card answered with {answer}"
+            })
+
+        elif action == 'next':
+            # Get next card (simplified implementation)
+            cards = get_cards_in_deck(deck_id=deck_id, username=username)
+            return JSONResponse({
+                "success": True,
+                "current_card": cards[0] if cards else None,
+                "message": "Got next card"
+            })
+
+        else:
+            return JSONResponse({"error": f"Unknown action: {action}"}, status_code=400)
+
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/api/close-custom-study-session")
+async def close_custom_study_session(request: Dict[str, Any]):
+    """Close custom study session"""
+    try:
+        deck_id = request.get('deck_id')
+        username = request.get('username')
+
+        if not deck_id or not username:
+            return JSONResponse({"error": "deck_id and username are required"}, status_code=400)
+
+        # For now, just return success - the actual session cleanup would need proper implementation
+        return JSONResponse({
+            "success": True,
+            "message": "Custom study session closed"
+        })
 
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)

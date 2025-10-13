@@ -38,6 +38,10 @@ class AnkiChatAPIClient:
             return response.json()
         except requests.exceptions.RequestException as e:
             logger.error(f"API request failed: {e}")
+            logger.error(f"Request URL: {url}")
+            logger.error(f"Request data: {data}")
+            logger.error(f"Response status: {response.status_code}")
+            logger.error(f"Response text: {response.text if hasattr(response, 'text') else 'N/A'}")
             return {'error': str(e), 'success': False}
 
     def _get(self, endpoint: str) -> Dict[str, Any]:
@@ -89,11 +93,12 @@ class AnkiChatAPIClient:
         })
 
     # Study session
-    def start_dual_session(self, username: str, deck_id: int) -> Dict[str, Any]:
+    def start_dual_session(self, username: str, grammar_deck_id: int, vocabulary_deck_id: int) -> Dict[str, Any]:
         """Start dual study session (grammar + vocabulary)"""
         return self._post('/api/start-dual-session', {
             'username': username,
-            'deck_id': deck_id
+            'grammar_deck_id': grammar_deck_id,
+            'vocabulary_deck_id': vocabulary_deck_id
         })
 
     def flip_card(self, username: str) -> Dict[str, Any]:
@@ -181,6 +186,66 @@ class AnkiChatAPIClient:
             answer=answer,
             is_cached_answer=True
         )
+
+    # Layer-based vocabulary system
+    def get_cards_by_tag_and_state(
+        self,
+        deck_id: int,
+        username: str,
+        tag: str,
+        state: str = 'new',
+        include_fields: bool = True
+    ) -> Dict[str, Any]:
+        """Get vocabulary cards by tag and state for LIFO layer processing"""
+        return self._post('/api/cards-by-tag-and-state', {
+            'deck_id': deck_id,
+            'username': username,
+            'tag': tag,
+            'state': state,
+            'include_fields': include_fields
+        })
+
+    def create_custom_study_session(
+        self,
+        deck_id: int,
+        username: str,
+        tag: str,
+        card_limit: int = 100
+    ) -> Dict[str, Any]:
+        """Create custom study session for a specific layer"""
+        return self._post('/api/create-custom-study-session', {
+            'deck_id': deck_id,
+            'username': username,
+            'tag': tag,
+            'card_limit': card_limit
+        })
+
+    def study_custom_session(
+        self,
+        deck_id: int,
+        username: str,
+        action: str
+    ) -> Dict[str, Any]:
+        """Study cards in custom session (start, flip, answer)"""
+        return self._post('/api/study-custom-session', {
+            'deck_id': deck_id,
+            'username': username,
+            'action': action
+        })
+
+    def close_custom_study_session(self, deck_id: int, username: str) -> Dict[str, Any]:
+        """Close custom study session"""
+        return self._post('/api/close-custom-study-session', {
+            'deck_id': deck_id,
+            'username': username
+        })
+
+    def get_active_layers(self, deck_id: int, username: str) -> Dict[str, Any]:
+        """Get all active layer tags for LIFO processing"""
+        return self._post('/api/active-layers', {
+            'deck_id': deck_id,
+            'username': username
+        })
 
     # Health check
     def health_check(self) -> Dict[str, Any]:

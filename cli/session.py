@@ -6,7 +6,7 @@ Handles the main study loop with keyboard commands.
 
 import sys
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from prompt_toolkit import PromptSession
 from prompt_toolkit.shortcuts import prompt
 from rich.console import Console
@@ -48,32 +48,48 @@ class InteractiveStudySession:
         self.username: Optional[str] = None  # AnkiWeb username
         self.deck_id: Optional[int] = None
         self.deck_name: Optional[str] = None
+        self.grammar_deck_id: Optional[int] = None
+        self.grammar_deck_name: Optional[str] = None
+        self.vocabulary_deck_id: Optional[int] = None
+        self.vocabulary_deck_name: Optional[str] = None
         self.current_card: Optional[Dict[str, Any]] = None
         self.card_flipped = False
         self.current_mode = 'grammar'  # 'grammar' or 'vocabulary'
         self.claude_processing = False
         self.cached_grammar_answer: Optional[Dict[str, Any]] = None
 
-        # Polling manager for vocabulary card detection
+        # LIFO layer system state
+        self.active_layers: List[str] = []  # Stack of layer tags (LIFO)
+        self.current_layer: Optional[str] = None
+        self.current_custom_session_deck_id: Optional[int] = None
+        self.layer_study_stack: List[str] = []  # Layers to study in LIFO order
+
+        # Polling manager for vocabulary card detection (kept for compatibility)
         self.vocab_poll_manager: Optional[PollingManager] = None
-        self.vocab_deck_id = 1  # Default deck for vocabulary cards
 
     def run(self, deck_id: Optional[int] = None):
         """
         Main interactive loop
 
         Args:
-            deck_id: Optional deck ID to skip selection
+            deck_id: Optional deck ID to skip selection (for backward compatibility)
         """
         try:
             # Login
             self.profile_name = self._login()
 
-            # Select deck
+            # Select decks (both grammar and vocabulary)
             if deck_id is None:
-                deck_id = self._select_deck()
-
-            self.deck_id = deck_id
+                self._select_decks()
+            else:
+                # Backward compatibility: use provided deck as grammar deck and prompt for vocabulary deck
+                self.grammar_deck_id = deck_id
+                decks = self.api.get_decks(self.profile_name)
+                for deck in decks:
+                    if deck['id'] == deck_id:
+                        self.grammar_deck_name = deck['name']
+                        break
+                self._select_vocabulary_deck()
 
             # Start study session
             self._start_session()
@@ -120,8 +136,8 @@ class InteractiveStudySession:
         self.console.print("✅ Login successful!\n")
         return profile_name  # Return profile_name for deck operations
 
-    def _select_deck(self) -> int:
-        """Interactive deck selection"""
+    def _select_decks(self):
+        """Interactive selection of both grammar and vocabulary decks"""
         self.console.print("📚 Loading decks...\n")
 
         decks = self.api.get_decks(self.profile_name)
@@ -138,25 +154,72 @@ class InteractiveStudySession:
         # Display deck table
         display_deck_table(self.console, decks)
 
-        # Prompt for selection
+        # Select grammar deck
+        self.console.print("[bold blue]Select Grammar Deck:[/bold blue]")
         while True:
             try:
-                choice = Prompt.ask("\nSelect deck number")
+                choice = Prompt.ask("Enter grammar deck number")
                 deck_num = int(choice)
                 if 1 <= deck_num <= len(decks):
                     selected_deck = decks[deck_num - 1]
+                    self.grammar_deck_id = selected_deck['id']
+                    self.grammar_deck_name = selected_deck['name']
+                    self.deck_id = selected_deck['id']  # For backward compatibility
                     self.deck_name = selected_deck['name']
-                    return selected_deck['id']
+                    break
                 else:
                     self.console.print(f"[yellow]Please enter a number between 1 and {len(decks)}[/yellow]")
             except ValueError:
                 self.console.print("[yellow]Please enter a valid number[/yellow]")
 
+        # Select vocabulary deck
+        self._select_vocabulary_deck(decks)
+
+    def _select_vocabulary_deck(self, decks: Optional[List[Dict]] = None):
+        """Select vocabulary deck (can be same or different from grammar deck)"""
+        if decks is None:
+            decks = self.api.get_decks(self.profile_name)
+            # Fetch counts for each deck
+            for deck in decks:
+                counts = self.api.get_deck_counts(deck['id'], self.profile_name)
+                deck.update(counts)
+
+        self.console.print("[bold green]Select Vocabulary Deck:[/bold green]")
+        self.console.print("[dim](This is where new vocabulary cards will be created)[/dim]")
+
+        while True:
+            try:
+                choice = Prompt.ask("Enter vocabulary deck number", default=str(self.grammar_deck_id))
+                deck_num = int(choice)
+                if 1 <= deck_num <= len(decks):
+                    selected_deck = decks[deck_num - 1]
+                    self.vocabulary_deck_id = selected_deck['id']
+                    self.vocabulary_deck_name = selected_deck['name']
+                    break
+                else:
+                    self.console.print(f"[yellow]Please enter a number between 1 and {len(decks)}[/yellow]")
+            except ValueError:
+                self.console.print("[yellow]Please enter a valid number[/yellow]")
+
+        # Show selection summary
+        self.console.print(f"\n✅ [bold]Deck Selection:[/bold]")
+        self.console.print(f"   Grammar: [blue]{self.grammar_deck_name}[/blue] (ID: {self.grammar_deck_id})")
+        self.console.print(f"   Vocabulary: [green]{self.vocabulary_deck_name}[/green] (ID: {self.vocabulary_deck_id})")
+        if self.grammar_deck_id == self.vocabulary_deck_id:
+            self.console.print("[dim]   (Using same deck for both grammar and vocabulary)[/dim]")
+        self.console.print()
+
     def _start_session(self):
         """Start the study session"""
-        self.console.print(f"\n🎯 Starting study session: [bold]{self.deck_name}[/bold]\n")
+        self.console.print(f"\n🎯 Starting dual study session...")
+        self.console.print(f"   Grammar: [blue]{self.grammar_deck_name}[/blue]")
+        self.console.print(f"   Vocabulary: [green]{self.vocabulary_deck_name}[/green]\n")
 
-        result = self.api.start_dual_session(self.profile_name, self.deck_id)
+        result = self.api.start_dual_session(
+            self.profile_name,
+            self.grammar_deck_id,
+            self.vocabulary_deck_id
+        )
 
         if not result.get('success'):
             error_msg = result.get('error', 'Unknown error')
@@ -305,11 +368,11 @@ class InteractiveStudySession:
         self.console.print(f"✅ Card answered: [bold]{answer_labels[answer]}[/bold]\n")
 
         if self.claude_processing:
-            # Answer was cached - show message but continue to next card
+            # Show message that vocabulary cards are being created
             self.console.print(Panel(
-                "[cyan]Answer cached while Claude generates vocabulary cards.[/cyan]\n"
+                "[cyan]Vocabulary cards are being created in custom study sessions.[/cyan]\n"
                 "You can study vocabulary cards now or continue.",
-                title="Answer Cached",
+                title="Vocabulary Creation",
                 border_style="purple"
             ))
             # Don't return - continue to get next card like web app
@@ -320,35 +383,9 @@ class InteractiveStudySession:
             self.current_card = next_card
             self._display_card_front()
 
-            # Auto-answer logic: if claude is processing and there are cached answers
-            # automatically submit the same answer for the next few cards
             if self.claude_processing:
-                status_result = self.api.get_vocabulary_queue_status(self.profile_name)
-                if status_result.get('success'):
-                    status = status_result.get('queue_status', {})
-                    cached_answers = status.get('cached_answers', 0)
-                    if cached_answers > 0:
-                        # Auto-answer this card with the same answer
-                        auto_result = self.api.answer_grammar_card(
-                            username=self.profile_name,
-                            card_id=next_card.get('card_id', 0),
-                            answer=3,  # Use 'Good' as default for auto-answered cards
-                            claude_processing=True
-                        )
-
-                        if auto_result.get('success'):
-                            self.console.print("[dim]🤖 Auto-answered (Good) while vocabulary generates...[/dim]")
-                            # Get the next card after auto-answering
-                            next_next_card = auto_result.get('next_card')
-                            if next_next_card:
-                                self.current_card = next_next_card
-                                self._display_card_front()
-                                self.console.print("[dim]💡 Press 'v' to study vocabulary cards when ready[/dim]")
-                            else:
-                                self.console.print("[green]🎉 All grammar cards processed![/green]")
-                                self.running = False
-                        else:
-                            self.console.print("[yellow]Auto-answer failed, switching to manual[/yellow]")
+                self.console.print("[dim]💡 Press 'v' to study vocabulary cards when ready[/dim]")
+                # Note: Auto-answer logic removed as we no longer use caching system
         else:
             self.console.print("[green]🎉 No more cards to study![/green]")
             self.running = False
@@ -374,108 +411,290 @@ class InteractiveStudySession:
             self.claude_processing = True
             self.console.print(Panel(
                 "[cyan]Claude is generating vocabulary definitions...[/cyan]\n"
-                "Your next answer will be cached.\n"
+                "New cards will be added to custom study sessions with layer tags.\n"
                 "Switch to vocabulary mode ([v]) to study the new cards.",
                 title="Claude SDK Processing",
                 border_style="purple"
             ))
+
+            # Refresh layers after new cards are created
+            self._load_active_layers()
         else:
             error_msg = result.get('error', 'Unknown error')
             self.console.print(f"[red]Failed to request definitions: {error_msg}[/red]")
 
     def _switch_to_vocabulary(self):
-        """Switch to vocabulary study mode"""
+        """Switch to vocabulary study mode using LIFO layer system"""
         if self.current_mode == 'vocabulary':
             self.console.print("[yellow]Already in vocabulary mode[/yellow]")
             return
 
         self.current_mode = 'vocabulary'
-        self.console.print("\n📖 [bold]Vocabulary Mode[/bold]\n")
+        self.console.print("\n📖 [bold]Vocabulary Mode (LIFO Layers)[/bold]\n")
 
-        # Show queue status
-        status_result = self.api.get_vocabulary_queue_status(self.profile_name)
-        if status_result.get('success'):
-            status = status_result.get('queue_status', {})
-            display_vocabulary_queue(self.console, status)
+        # Load active layers in LIFO order
+        self._load_active_layers()
 
-            if status.get('queue_length', 0) > 0:
-                self._study_vocabulary()
-            else:
-                self.console.print("[yellow]No vocabulary cards in queue[/yellow]")
-                self.console.print("[dim]Press 'g' to return to grammar mode[/dim]")
+        if self.layer_study_stack:
+            self.console.print(f"[green]Found {len(self.layer_study_stack)} active layers[/green]")
+            self._study_vocabulary_lifo()
         else:
-            self.console.print("[red]Failed to get vocabulary queue status[/red]")
+            self.console.print("[yellow]No vocabulary layers available[/yellow]")
+            self.console.print("[dim]Define words from grammar cards to create layers[/dim]")
+            self.console.print("[dim]Press 'g' to return to grammar mode[/dim]")
 
-    def _study_vocabulary(self):
-        """Study vocabulary cards"""
-        self.current_mode = 'vocabulary'
-        vocabulary_card = None
+    def _load_active_layers(self):
+        """Load active vocabulary layers in LIFO order"""
+        try:
+            result = self.api.get_active_layers(self.vocabulary_deck_id, self.profile_name)
+            if result.get('success'):
+                layers = result.get('layers', [])
+                # Sort layers by timestamp (most recent first) for LIFO
+                layers.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+                self.layer_study_stack = [layer['tag'] for layer in layers]
+                self.console.print(f"[dim]Loaded layers (LIFO order): {', '.join(self.layer_study_stack[:3])}{'...' if len(self.layer_study_stack) > 3 else ''}[/dim]")
+            else:
+                self.layer_study_stack = []
+                self.console.print(f"[dim]No active layers found: {result.get('error', 'Unknown error')}[/dim]")
+        except Exception as e:
+            logger.error(f"Error loading active layers: {e}")
+            self.layer_study_stack = []
+            self.console.print(f"[red]Error loading layers: {e}[/red]")
 
-        # Get first card
-        result = self.api.get_next_vocabulary_card(self.profile_name)
-
-        if not result.get('success') or not result.get('card'):
-            self.console.print("[green]No vocabulary cards available![/green]")
+    def _study_vocabulary_lifo(self):
+        """Study vocabulary cards using LIFO layer system"""
+        if not self.layer_study_stack:
+            self.console.print("[yellow]No more layers to study[/yellow]")
             return
 
-        vocabulary_card = result['card']
-        self.current_card = vocabulary_card  # Store for navigation
+        # Get the most recent layer (top of stack)
+        current_layer = self.layer_study_stack[0]
+        self.current_layer = current_layer
 
-        # Display the vocabulary card with pagination
-        self.display.reset_pagination()
-        self.display.display_card_full(vocabulary_card, force_refresh=True)
+        self.console.print(f"\n🎯 [bold]Studying Layer:[/bold] [cyan]{current_layer}[/cyan]")
+        self.console.print(f"[dim]Layers remaining: {len(self.layer_study_stack) - 1}[/dim]\n")
 
-        # Show vocabulary navigation options
-        self._show_vocabulary_actions()
+        # Create custom study session for this layer
+        session_result = self.api.create_custom_study_session(
+            self.vocabulary_deck_id,
+            self.profile_name,
+            current_layer,
+            card_limit=100
+        )
 
-        # Study loop - stay on current card until marked as studied
-        while self.running and self.current_mode == 'vocabulary':
+        if not session_result.get('success'):
+            self.console.print(f"[red]Failed to create study session: {session_result.get('error')}[/red]")
+            return
+
+        self.current_custom_session_deck_id = session_result.get('session_deck_id', self.vocabulary_deck_id)
+
+        # Start studying the custom session
+        self._study_custom_session()
+
+    def _study_custom_session(self):
+        """Study cards in the current custom session"""
+        # Start the session
+        start_result = self.api.study_custom_session(
+            self.current_custom_session_deck_id,
+            self.profile_name,
+            'start'
+        )
+
+        if not start_result.get('success'):
+            self.console.print(f"[red]Failed to start custom session: {start_result.get('error')}[/red]")
+            return
+
+        current_card = start_result.get('current_card')
+        if not current_card:
+            self.console.print("[green]No cards in this layer![/green]")
+            self._complete_current_layer()
+            return
+
+        # Study loop for this layer
+        while current_card and self.current_mode == 'vocabulary':
+            self.current_card = current_card
+
+            # Display the card
+            self.display.reset_pagination()
+            self.display.display_card_full(current_card, force_refresh=True)
+            self._show_custom_session_actions()
+
+            # Get user input
             try:
-                # Handle user input
                 action = self._get_user_input()
-                action_result = self._handle_vocabulary_action(action, vocabulary_card)
+                result = self._handle_custom_session_action(action, current_card)
 
-                # If card was marked as studied, get next card
-                if action_result == 'studied':
-                    # Clear current card first (like web app)
-                    self.current_card = None
+                if result == 'next_card':
+                    # Get next card
+                    next_result = self.api.study_custom_session(
+                        self.current_custom_session_deck_id,
+                        self.profile_name,
+                        'next'
+                    )
 
-                    # Get next card immediately
-                    result = self.api.get_next_vocabulary_card(self.profile_name)
-
-                    if result.get('success') and result.get('card'):
-                        vocabulary_card = result['card']
-                        self.current_card = vocabulary_card
-                        self._last_page_reached = False  # Reset for new card
-                        self.display.reset_pagination()
-                        self.display.display_card_full(vocabulary_card, force_refresh=True)
-                        self._show_vocabulary_actions()
+                    if next_result.get('success') and next_result.get('current_card'):
+                        current_card = next_result['current_card']
                     else:
-                        # No more cards
-                        self.console.print("[green]No more vocabulary cards![/green]")
-
-                        # Check if there are cached answers to submit
-                        status_result = self.api.get_vocabulary_queue_status(self.profile_name)
-                        if status_result.get('success'):
-                            status = status_result.get('queue_status', {})
-                            if status.get('cached_answers', 0) > 0:
-                                if Confirm.ask("Submit vocabulary session?"):
-                                    self._submit_vocabulary_session()
+                        # No more cards in this layer
+                        self.console.print("[green]✅ Layer completed![/green]")
+                        self._complete_current_layer()
                         break
-                # If new card was created and displayed, update study loop
-                elif action_result == 'new_card':
-                    # Update vocabulary_card to match the new current_card
-                    vocabulary_card = self.current_card
-                    # Study loop continues with the new card
-                # If exited vocabulary mode
-                elif action_result == 'exit_mode':
+                elif result == 'exit_mode':
                     break
 
             except KeyboardInterrupt:
                 self.console.print("\n[yellow]Use 'q' to quit[/yellow]")
             except Exception as e:
-                logger.error(f"Error in vocabulary study loop: {e}")
+                logger.error(f"Error in custom session: {e}")
                 self.console.print(f"[red]Error: {e}[/red]")
+
+    def _complete_current_layer(self):
+        """Complete current layer and move to next one"""
+        # Close the custom session
+        self.api.close_custom_study_session(
+            self.current_custom_session_deck_id,
+            self.profile_name
+        )
+
+        # Remove current layer from stack (LIFO - pop from top)
+        if self.layer_study_stack and self.layer_study_stack[0] == self.current_layer:
+            self.layer_study_stack.pop(0)
+
+        # Reset session state
+        self.current_custom_session_deck_id = None
+        self.current_layer = None
+        self.current_card = None
+
+        # Continue with next layer if available
+        if self.layer_study_stack:
+            self.console.print(f"\n[cyan]📚 Moving to next layer...[/cyan]")
+            self._study_vocabulary_lifo()
+        else:
+            self.console.print("\n[green]🎉 All vocabulary layers completed![/green]")
+            self.console.print("[dim]Press 'g' to return to grammar mode[/dim]")
+
+    def _show_custom_session_actions(self):
+        """Show available actions for custom vocabulary session"""
+        pagination_hint = ""
+        if self.display.total_pages > 1:
+            pagination_hint = "  [n/p] Next/Prev page"
+        self.console.print(f"[dim][1-4] Answer{pagination_hint}  [d] Define  [g] Grammar  [h] Help  [q] Quit[/dim]\n")
+
+    def _handle_custom_session_action(self, action: str, card: Dict[str, Any]) -> str:
+        """Handle user action in custom vocabulary session"""
+        if action in ['1', '2', '3', '4']:
+            # Answer the card
+            answer_result = self.api.study_custom_session(
+                self.current_custom_session_deck_id,
+                self.profile_name,
+                f'answer_{action}'
+            )
+
+            if answer_result.get('success'):
+                answer_labels = ['', 'Again', 'Hard', 'Good', 'Easy']
+                self.console.print(f"✅ Card answered: [bold]{answer_labels[int(action)]}[/bold]")
+                return 'next_card'
+            else:
+                self.console.print(f"[red]Failed to answer card: {answer_result.get('error')}[/red]")
+                return None
+
+        elif action in ['', 'n']:
+            # Next page
+            if self.display.next_page():
+                self.display.display_card_full(card, force_refresh=False)
+                self._show_custom_session_actions()
+            return None
+        elif action in ['b', 'p']:
+            # Previous page
+            if self.display.previous_page():
+                self.display.display_card_full(card, force_refresh=False)
+                self._show_custom_session_actions()
+            return None
+        elif action == 'd':
+            # Define words (creates nested layer)
+            define_result = self._define_vocabulary_words_in_session(card)
+            return define_result
+        elif action == 'g':
+            self._switch_to_grammar()
+            return 'exit_mode'
+        elif action in ['h', '?']:
+            self._show_vocabulary_help()
+            return None
+        elif action == 'q':
+            if Confirm.ask("Are you sure you want to quit?", default=False):
+                self.running = False
+            return None
+        else:
+            self.console.print(f"[yellow]Unknown command. Press 'h' for help[/yellow]")
+            return None
+
+    def _define_vocabulary_words_in_session(self, card: Dict[str, Any]) -> str:
+        """Define words from vocabulary card, creating nested layer"""
+        words_str = Prompt.ask("Enter words to define (comma-separated)")
+        words = [w.strip() for w in words_str.split(',') if w.strip()]
+
+        if not words:
+            self.console.print("[yellow]No words entered[/yellow]")
+            return None
+
+        self.console.print(f"🤖 Requesting definitions for vocabulary words: {', '.join(words)}...")
+
+        # IMPORTANT: Close current custom study session before creating new cards
+        # This prevents collection lock conflicts during nested definition creation
+        if self.current_custom_session_deck_id:
+            self.console.print("[dim]Closing current vocabulary session to allow card creation...[/dim]")
+            close_result = self.api.close_custom_study_session(
+                self.current_custom_session_deck_id,
+                self.profile_name
+            )
+            if not close_result.get('success'):
+                logger.warning(f"Failed to close custom session: {close_result.get('error')}")
+
+        # Use vocabulary card context for nested layer generation
+        result = self.api.request_definitions(
+            username=self.profile_name,
+            words=words,
+            card_context=card
+        )
+
+        if result.get('success'):
+            self.console.print(Panel(
+                "[cyan]Claude is generating nested vocabulary definitions...[/cyan]\n"
+                "New cards will be added to a nested layer (LIFO priority).\n"
+                "[dim]Polling will timeout after 60 seconds if cards aren't created.[/dim]",
+                title="Nested Layer Creation",
+                border_style="purple"
+            ))
+
+            # Poll for new cards
+            poll_result = self._poll_for_new_vocabulary_cards()
+
+            if poll_result == 'found':
+                self.console.print("[green]✅ New nested layer created![/green]")
+                # Reload layers to get the new nested layer on top
+                self._load_active_layers()
+                if self.layer_study_stack:
+                    self.console.print("[cyan]🔄 Restarting with new nested layer (LIFO priority)[/cyan]")
+                    # Restart studying with the new layer on top
+                    self._complete_current_layer()  # This will start the new layer
+                    return 'restart_layer'
+                else:
+                    self.console.print("[yellow]No layers found after creation[/yellow]")
+                    return None
+            else:
+                self.console.print("[yellow]No new cards detected[/yellow]")
+                return None
+        else:
+            error_msg = result.get('error', 'Unknown error')
+            self.console.print(f"[red]Failed to request definitions: {error_msg}[/red]")
+            return None
+
+    def _study_vocabulary(self):
+        """[DEPRECATED] Study vocabulary cards - use _study_vocabulary_lifo instead"""
+        self.console.print("[yellow]Note: Using legacy vocabulary study mode. New LIFO layer system recommended.[/yellow]")
+        self.console.print("[dim]Switching to LIFO layer system...[/dim]")
+        self._switch_to_vocabulary()
+        return
 
     def _show_vocabulary_actions(self):
         """Show available actions for vocabulary cards"""
@@ -646,7 +865,11 @@ class InteractiveStudySession:
             # Start completely fresh grammar session
             if self.deck_id:
                 self.console.print(f"[dim]Starting fresh grammar session for deck: {self.deck_name} (ID: {self.deck_id})[/dim]")
-                result = self.api.start_dual_session(self.profile_name, self.deck_id)
+                result = self.api.start_dual_session(
+                    self.profile_name,
+                    self.grammar_deck_id,
+                    self.vocabulary_deck_id
+                )
 
                 if result.get('success') and result.get('current_card'):
                     self.current_card = result['current_card']
@@ -725,7 +948,7 @@ class InteractiveStudySession:
         if result.get('success'):
             self.console.print(Panel(
                 "[cyan]Claude is generating vocabulary definitions...[/cyan]\n"
-                "New cards will be added to the vocabulary queue.\n"
+                "New cards will be added to custom study sessions with layer tags.\n"
                 "[dim]Polling will timeout after 60 seconds if cards aren't created.[/dim]",
                 title="Claude SDK Processing",
                 border_style="purple"
@@ -801,7 +1024,7 @@ class InteractiveStudySession:
                 return get_cards_in_deck(deck_id=deck_id, username=username)
 
             detector = VocabularyCardDetector(get_cards_fn)
-            _, baseline_ids = detector.get_current_cards(self.vocab_deck_id, self.profile_name)
+            _, baseline_ids = detector.get_current_cards(self.vocabulary_deck_id, self.profile_name)
             self.vocab_poll_manager.record_baseline(baseline_ids)
 
             self.console.print(f"[dim]Baseline: {len(baseline_ids)} cards in vocabulary deck[/dim]")
@@ -825,7 +1048,7 @@ class InteractiveStudySession:
 
             # Check for new cards
             try:
-                _, current_ids = detector.get_current_cards(self.vocab_deck_id, self.profile_name)
+                _, current_ids = detector.get_current_cards(self.vocabulary_deck_id, self.profile_name)
                 new_ids = self.vocab_poll_manager.check_for_new_cards(current_ids)
 
                 if new_ids:
@@ -894,31 +1117,34 @@ class InteractiveStudySession:
     def _show_vocabulary_help(self):
         """Display help specific to vocabulary mode"""
         help_text = """
-[bold cyan]Vocabulary Mode Help:[/bold cyan]
+[bold cyan]Vocabulary Mode Help (LIFO Layers):[/bold cyan]
 
 [bold]Study Commands:[/bold]
-  [yellow]Enter[/yellow]    - Next page, or mark as studied at end
-  [yellow]3[/yellow]        - Explicitly mark as studied
+  [yellow]1-4[/yellow]       - Answer card (Again/Hard/Good/Easy)
+  [yellow]d[/yellow]        - Define words (creates nested layer)
 
 [bold]Navigation:[/bold]
   [yellow]Enter/n[/yellow]  - Next page (when card has multiple pages)
   [yellow]b/p[/yellow]      - Previous page
 
-[bold]Learning Commands:[/bold]
-  [yellow]d[/yellow]        - Define words from this card with Claude SDK
-  [yellow]r[/yellow]        - Retry checking for new cards (after timeout)
+[bold]Mode Commands:[/bold]
   [yellow]g[/yellow]        - Switch back to grammar mode
   [yellow]h/?[/yellow]      - Show this help
   [yellow]q[/yellow]        - Quit session
 
+[bold]LIFO Layer System:[/bold]
+• Vocabulary cards are organized in layers with tags (e.g., layer_123)
+• New words from grammar cards create new layers
+• Layers are studied in LIFO order (most recent first)
+• Defining words from vocabulary cards creates nested layers
+• Nested layers get immediate priority (LIFO behavior)
+
 [bold]Tips:[/bold]
-• Use 'n' to navigate through long vocabulary cards page by page
-• Press Enter when done reading to mark as studied
-• Define unfamiliar words for better learning
-• New cards are added to TOP of stack (LIFO) - newest first
-• Polling times out after 60 seconds - use 'r' to retry
+• Navigate long vocabulary cards page by page
+• Define unfamiliar words to create nested learning paths
+• New layers automatically get priority over existing ones
+• Each layer is a custom study session with 1-4 answer options
 • Switch between grammar and vocabulary modes as needed
-• All studied cards are cached for batch submission
         """.strip()
 
         panel = Panel(
@@ -939,11 +1165,20 @@ class InteractiveStudySession:
     def _cleanup(self):
         """Cleanup on exit"""
         if self.profile_name:
-            self.console.print("\n🔄 Closing session...")
+            self.console.print("\n🔄 Closing sessions...")
             try:
+                # Close any active custom vocabulary session
+                if self.current_custom_session_deck_id and self.current_mode == 'vocabulary':
+                    self.api.close_custom_study_session(
+                        self.current_custom_session_deck_id,
+                        self.profile_name
+                    )
+                    self.console.print("[dim]✓ Closed custom vocabulary session[/dim]")
+
+                # Close main study sessions
                 self.api.close_all_sessions(self.profile_name)
-                self.console.print("✅ Session closed")
+                self.console.print("✅ All sessions closed")
             except Exception as e:
-                logger.error(f"Error closing session: {e}")
+                logger.error(f"Error closing sessions: {e}")
 
         self.console.print("👋 [bold]Goodbye![/bold]\n")

@@ -541,6 +541,27 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
 
             logger.info(f"Starting nested layer {nested_layer_tag} from vocabulary card with {len(words)} words")
 
+            # Track word count for the nested layer
+            if not hasattr(self, 'layer_word_counts'):
+                self.layer_word_counts = {}
+            self.layer_word_counts[nested_layer_tag] = len(words)
+
+            # Update current layer to nested layer
+            prev_layer_tag = self.current_layer_tag
+            self.current_layer_tag = nested_layer_tag
+            self.words_in_current_layer = len(words)
+
+            # RESTART POLLING for the nested layer - stop any existing poll and start fresh
+            # This ensures we're polling for the correct nested layer tag
+            if self.polling_active:
+                logger.info(f"Stopping existing polling for layer {prev_layer_tag}")
+                self.polling_active = False
+                # Give it a moment to stop
+                await asyncio.sleep(0.5)
+
+            logger.info(f"Starting polling for nested layer {nested_layer_tag}")
+            await self._start_vocabulary_polling()
+
             # Prepare context from vocabulary card
             vocab_context = self._prepare_card_context(vocab_card)
 
@@ -559,7 +580,8 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
                 'layer_tag': definition_result.get('layer_tag'),
                 'vocab_deck_id': definition_result.get('vocab_deck_id'),
                 'word_count': len(words),
-                'nested_layer': True
+                'nested_layer': True,
+                'previous_layer': prev_layer_tag
             }
 
         except Exception as e:
