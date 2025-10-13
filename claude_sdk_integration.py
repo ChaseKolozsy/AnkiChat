@@ -132,6 +132,14 @@ class ClaudeSDKIntegration:
         self.current_vocabulary_card: Optional[Dict[str, Any]] = None
         # Track last created vocabulary session for frontend retrieval
         self.last_vocabulary_session: Optional[Dict[str, Any]] = None
+        # Track current layer tag for polling (set by definition requests)
+        self.current_layer_tag: Optional[str] = None
+        # Track expected word count for current layer
+        self.words_in_current_layer: int = 0
+        # Track initial card count before Claude SDK creates new cards
+        self.initial_card_count: int = 0
+        # Track cards processed in current layer
+        self.cards_processed_in_current_layer: int = 0
         self._check_sdk_availability()
 
     def set_vocabulary_deck(self, deck_id: int):
