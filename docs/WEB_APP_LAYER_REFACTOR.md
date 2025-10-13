@@ -3,12 +3,19 @@
 ## Overview
 Convert web app from queue-based vocabulary system to layer-based custom study sessions (matching CLI implementation).
 
-## Status
+## Status: ✅ COMPLETED
+
 - ✅ HTML UI updated to show layers instead of queue
 - ✅ Session state variables updated
-- ✅ Backend API endpoints already exist
-- ⏳ JavaScript functions need replacement
-- ⏳ Old queue endpoints need removal
+- ✅ Backend API endpoints already exist and working
+- ✅ JavaScript functions implemented
+- ✅ Old queue functions marked as deprecated (cleanup optional)
+- ✅ Web app now fully functional with layer-based system
+
+**Completed**: 2025-10-13
+**Commits**:
+- `870664d` - wip: begin web app refactor
+- `1aaad21` - feat: complete layer-based vocabulary refactor
 
 ## Changes Made So Far
 
