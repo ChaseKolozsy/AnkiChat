@@ -848,8 +848,7 @@ async def home(request: Request):
 
             deckSelection.classList.remove('hidden');
 
-            // Start vocabulary polling automatically when user loads decks
-            startVocabularyPolling();
+            // Note: Vocabulary layers are loaded when starting dual session (no auto-polling)
         }
 
         async function fetchDeckCounts(decks) {
