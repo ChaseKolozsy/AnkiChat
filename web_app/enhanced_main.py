@@ -1508,43 +1508,63 @@ async def home(request: Request):
 
         async function refreshLayers() {
             try {
-                const response = await fetch('/api/active-layers', {
+                // Instead of calling active-layers endpoint, directly check for custom study session
+                const response = await fetch('/api/cards-by-tag-and-state', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         deck_id: selectedVocabularyDeck.id,
-                        username: currentUser
+                        username: currentUser,
+                        tag_prefix: 'layer_',
+                        state: 'new'
                     })
                 });
 
                 const result = await response.json();
-                if (result.success) {
-                    vocabularySession.availableLayers = result.layers;
+                if (result.success && result.cards && result.cards.length > 0) {
+                    // Extract layer tags from cards
+                    const layerTags = new Set();
+                    result.cards.forEach(card => {
+                        if (card.tags) {
+                            card.tags.forEach(tag => {
+                                if (tag.startsWith('layer_')) {
+                                    layerTags.add(tag);
+                                }
+                            });
+                        }
+                    });
+
+                    const layers = Array.from(layerTags).sort((a, b) => b.length - a.length); // Longest first
+                    vocabularySession.availableLayers = layers.map(tag => ({ tag, created_at: tag }));
 
                     // Update layer count display
-                    document.getElementById('active-layer-count').textContent = result.layers.length;
+                    document.getElementById('active-layer-count').textContent = layers.length;
 
                     // Populate layer selector dropdown
                     const layerSelect = document.getElementById('layer-select');
                     layerSelect.innerHTML = '';
 
-                    if (result.layers.length === 0) {
+                    if (layers.length === 0) {
                         layerSelect.innerHTML = '<option value="">-- No layers available --</option>';
                         document.getElementById('start-layer-btn').disabled = true;
                     } else {
                         layerSelect.innerHTML = '<option value="">-- Select a layer --</option>';
-                        // Sort layers in LIFO order (most recent first)
-                        result.layers.forEach(layer => {
+                        // Sort layers in LIFO order (longest first for most specific)
+                        layers.forEach(tag => {
                             const option = document.createElement('option');
-                            option.value = layer.tag;
-                            option.textContent = layer.tag;
+                            option.value = tag;
+                            option.textContent = tag;
                             layerSelect.appendChild(option);
                         });
                     }
 
-                    console.log(`Loaded ${result.layers.length} active layers`);
+                    console.log(`Loaded ${layers.length} active layers`);
                 } else {
-                    console.error('Error fetching layers:', result.error);
+                    // No layers found
+                    vocabularySession.availableLayers = [];
+                    document.getElementById('active-layer-count').textContent = '0';
+                    document.getElementById('layer-select').innerHTML = '<option value="">-- No layers available --</option>';
+                    document.getElementById('start-layer-btn').disabled = true;
                 }
             } catch (error) {
                 console.error('Error refreshing layers:', error);
@@ -2374,30 +2394,54 @@ async def get_cards_by_tag_and_state_endpoint(request: Dict[str, Any]):
         deck_id = request.get('deck_id')
         username = request.get('username')
         tag = request.get('tag')
+        tag_prefix = request.get('tag_prefix')  # New parameter for prefix matching
         state = request.get('state', 'new')
         include_fields = request.get('include_fields', True)
 
         if not deck_id or not username:
             return JSONResponse({"error": "deck_id and username are required"}, status_code=400)
 
-        # Get cards by tag and state using the available functions
-        # First get cards by tag, then filter by state
-        cards_by_tag = get_cards_by_tag(tag=tag, username=username, inclusions=None if include_fields else ['id'])
+        if not tag and not tag_prefix:
+            return JSONResponse({"error": "tag or tag_prefix is required"}, status_code=400)
 
-        # Filter by state if needed
-        if state:
-            filtered_cards = []
-            for card in cards_by_tag:
-                card_state = card.get('state', 'unknown')
-                if card_state == state:
-                    filtered_cards.append(card)
-            cards = filtered_cards
-        else:
-            cards = cards_by_tag
+        inclusions = ['id', 'tags', 'note_id'] if include_fields else ['id']
+        all_cards = []
+
+        if tag:
+            # Get cards for specific tag
+            cards_response = card_ops.get_cards_by_tag_and_state(
+                tag=tag,
+                state=state,
+                username=username,
+                inclusions=inclusions
+            )
+            if cards_response and 'cards' in cards_response:
+                all_cards.extend(cards_response['cards'])
+
+        elif tag_prefix:
+            # For prefix matching, we need to get cards and then filter by prefix
+            # Since get_cards_by_tag_and_state needs exact tag, we'll get all cards by state
+            # and then filter for the prefix
+            cards_response = card_ops.get_cards_by_state(
+                deck_id=deck_id,
+                state=state,
+                username=username,
+                inclusions=inclusions
+            )
+
+            if cards_response and 'cards' in cards_response:
+                # Filter by tag prefix
+                for card in cards_response['cards']:
+                    tags = card.get('tags', [])
+                    for card_tag in tags:
+                        if card_tag.startswith(tag_prefix):
+                            all_cards.append(card)
+                            break  # Only add card once
 
         return JSONResponse({
             "success": True,
-            "cards": cards
+            "cards": all_cards,
+            "count": len(all_cards)
         })
 
     except Exception as e:
