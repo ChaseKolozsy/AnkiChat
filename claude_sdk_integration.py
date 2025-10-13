@@ -647,6 +647,25 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
             self.current_layer_tag = nested_layer_tag
             self.words_in_current_layer = len(words)
 
+            # Get initial card count for this nested layer tag before Claude SDK starts
+            try:
+                from AnkiClient.src.operations.card_ops import get_cards_by_tag_and_state
+                initial_cards = get_cards_by_tag_and_state(
+                    tag=nested_layer_tag,
+                    state="new",
+                    username="chase",
+                    inclusions=['id']  # Only get IDs for counting
+                )
+                if isinstance(initial_cards, list):
+                    self.initial_card_count = len(initial_cards)
+                    logger.info(f"Starting nested layer {nested_layer_tag} with {len(words)} words, initial cards present: {self.initial_card_count}")
+                else:
+                    self.initial_card_count = 0
+                    logger.info(f"Starting nested layer {nested_layer_tag} with {len(words)} words, no initial cards found")
+            except Exception as e:
+                self.initial_card_count = 0
+                logger.warning(f"Failed to get initial card count for nested layer {nested_layer_tag}: {e}")
+
             # RESTART POLLING for the nested layer - stop any existing poll and start fresh
             # This ensures we're polling for the correct nested layer tag
             if self.polling_active:
