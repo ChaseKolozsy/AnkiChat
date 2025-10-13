@@ -343,20 +343,19 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
                         # Check if we have all expected cards for this layer
                         expected_word_count = self.words_in_current_layer
 
+                        # Calculate the total expected cards (initial + new from Claude SDK)
+                        total_expected = getattr(self, 'initial_card_count', 0) + expected_word_count
+
                         # Handle different scenarios for found vs expected cards
                         if expected_word_count == 0:
                             logger.warning(f"Expected word count is 0, waiting for definition request to set proper count")
-                        elif found_count == expected_word_count:
-                            logger.info(f"Exact number of expected cards found ({found_count}/{expected_word_count}). Creating custom study session...")
-                            await self._attempt_custom_session_creation()
-                        elif found_count > expected_word_count:
-                            logger.warning(f"Found more cards than expected ({found_count}/{expected_word_count}). Using only the most recent {expected_word_count} cards.")
-                            # Take only the most recent cards (assume they're returned in order of creation)
-                            recent_cards = tagged_cards[-expected_word_count:]
-                            # We'll proceed with all found cards for now since custom study session uses tag filtering
+                        elif found_count >= total_expected:
+                            logger.info(f"Expected total cards reached ({found_count}/{total_expected}). Creating custom study session...")
+                            logger.info(f"(Initial: {getattr(self, 'initial_card_count', 0)} + New: {expected_word_count} = Total: {total_expected})")
                             await self._attempt_custom_session_creation()
                         else:
-                            logger.info(f"Waiting for more cards ({found_count}/{expected_word_count})")
+                            remaining_cards = total_expected - found_count
+                            logger.info(f"Waiting for more cards ({found_count}/{total_expected}). Need {remaining_cards} more cards from Claude SDK.")
 
                 except ImportError as e:
                     # Fallback to old polling method if tag-based function not available
@@ -531,7 +530,24 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
             self.layer_word_counts[layer_tag] = len(words)
             self.words_in_current_layer = len(words)
 
-            logger.info(f"Starting new layer {layer_tag} with {len(words)} words")
+            # Get initial card count for this layer tag before Claude SDK starts
+            try:
+                from AnkiClient.src.operations.card_ops import get_cards_by_tag_and_state
+                initial_cards = get_cards_by_tag_and_state(
+                    tag=layer_tag,
+                    state="new",
+                    username="chase",
+                    inclusions=['id']  # Only get IDs for counting
+                )
+                if isinstance(initial_cards, list):
+                    self.initial_card_count = len(initial_cards)
+                    logger.info(f"Starting new layer {layer_tag} with {len(words)} words, initial cards present: {self.initial_card_count}")
+                else:
+                    self.initial_card_count = 0
+                    logger.info(f"Starting new layer {layer_tag} with {len(words)} words, no initial cards found")
+            except Exception as e:
+                self.initial_card_count = 0
+                logger.warning(f"Failed to get initial card count for layer {layer_tag}: {e}")
 
             # START POLLING NOW - only when user requests word definitions
             await self._start_vocabulary_polling()
