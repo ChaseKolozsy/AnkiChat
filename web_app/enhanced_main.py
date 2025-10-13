@@ -1499,91 +1499,56 @@ async def home(request: Request):
 
         async function checkVocabularySession() {
             try {
-                // Get all available layer tags sorted by length (longest first for LIFO)
-                const response = await fetch('/api/cards-by-tag-and-state', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        deck_id: selectedVocabularyDeck.id,
-                        username: currentUser,
-                        tag_prefix: 'layer_',
-                        state: 'new'
-                    })
-                });
-
-                const result = await response.json();
-                if (result.success && result.cards && result.cards.length > 0) {
-                    // Extract all unique layer tags
-                    const layerTags = new Set();
-                    const cardsByLayer = {};
-
-                    result.cards.forEach(card => {
-                        if (card.tags) {
-                            card.tags.forEach(tag => {
-                                if (tag.startsWith('layer_')) {
-                                    layerTags.add(tag);
-                                    if (!cardsByLayer[tag]) {
-                                        cardsByLayer[tag] = [];
-                                    }
-                                    cardsByLayer[tag].push(card);
-                                }
-                            });
-                        }
-                    });
-
-                    // Sort layers by length (longest first) - LIFO ordering
-                    const sortedLayers = Array.from(layerTags).sort((a, b) => b.length - a.length);
-
-                    if (sortedLayers.length > 0) {
-                        // Find the first layer that still has cards available
-                        let activeLayer = null;
-                        let activeCards = [];
-
-                        for (const layerTag of sortedLayers) {
-                            const layerCards = cardsByLayer[layerTag] || [];
-                            if (layerCards.length > 0) {
-                                activeLayer = layerTag;
-                                activeCards = layerCards;
-                                break;
-                            }
-                        }
-
-                        if (activeLayer) {
-                            // Update UI to show active layer
-                            document.getElementById('current-layer-tag').textContent = activeLayer;
-                            document.getElementById('vocab-status').textContent = `Layer: ${activeLayer}`;
-                            document.getElementById('vocab-status').className = 'session-status status-active';
-                            document.getElementById('vocab-cards-remaining').textContent = activeCards.length;
-
-                            // Store current layer info
-                            vocabularySession.currentLayer = activeLayer;
-                            vocabularySession.availableLayers = sortedLayers;
-                            vocabularySession.cardsRemaining = activeCards.length;
-
-                            // Show vocabulary controls
-                            document.getElementById('vocab-controls').classList.remove('hidden');
-
-                            // Start study session for this layer if not already active
-                            if (!vocabularySession.isActive || vocabularySession.currentLayer !== activeLayer) {
-                                await startVocabularyStudySession(activeLayer);
-                            }
-                        } else {
-                            // All layers completed
-                            await completeVocabularySession();
-                        }
-                    }
-                } else {
-                    // No active vocabulary session
+                // Check if there are layer tags stored in the client-side vocabularySession
+                if (!vocabularySession.availableLayers || vocabularySession.availableLayers.length === 0) {
+                    console.log('No layer tags available in client session');
                     document.getElementById('current-layer-tag').textContent = 'None';
                     document.getElementById('vocab-status').textContent = 'Waiting for custom study session';
                     document.getElementById('vocab-status').className = 'session-status status-waiting';
                     document.getElementById('vocab-cards-remaining').textContent = '0';
                     document.getElementById('vocab-controls').classList.add('hidden');
+                    return;
+                }
 
-                    // Reset session state
-                    vocabularySession.currentLayer = null;
-                    vocabularySession.availableLayers = [];
-                    vocabularySession.cardsRemaining = 0;
+                // Sort layers by length (longest first) - LIFO ordering
+                const sortedLayers = vocabularySession.availableLayers.sort((a, b) => b.length - a.length);
+
+                // Find the first layer that hasn't been completed yet
+                let activeLayer = null;
+
+                for (const layerTag of sortedLayers) {
+                    // Check if this layer still needs to be studied
+                    if (vocabularySession.completedLayers && !vocabularySession.completedLayers.includes(layerTag)) {
+                        activeLayer = layerTag;
+                        break;
+                    } else if (!vocabularySession.completedLayers) {
+                        // No completed layers tracking yet, use the first one
+                        activeLayer = layerTag;
+                        break;
+                    }
+                }
+
+                if (activeLayer) {
+                    // Update UI to show active layer
+                    document.getElementById('current-layer-tag').textContent = activeLayer;
+                    document.getElementById('vocab-status').textContent = `Layer: ${activeLayer}`;
+                    document.getElementById('vocab-status').className = 'session-status status-active';
+                    document.getElementById('vocab-cards-remaining').textContent = '?';
+
+                    // Store current layer info
+                    vocabularySession.currentLayer = activeLayer;
+                    vocabularySession.isActive = true;
+
+                    // Show vocabulary controls
+                    document.getElementById('vocab-controls').classList.remove('hidden');
+
+                    // Start study session for this layer if not already active
+                    if (!vocabularySession.currentCustomDeckId || vocabularySession.currentLayer !== activeLayer) {
+                        await startVocabularyStudySession(activeLayer);
+                    }
+                } else {
+                    // All layers completed
+                    await completeVocabularySession();
                 }
             } catch (error) {
                 console.error('Error checking vocabulary session:', error);
