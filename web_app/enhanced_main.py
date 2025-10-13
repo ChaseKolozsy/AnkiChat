@@ -1508,7 +1508,75 @@ async def home(request: Request):
 
         async function checkVocabularySession() {
             try {
-                // Check if there's an active custom study session by looking for "Custom Study Session" deck
+                // Step 1: Get ALL layer tags from the main vocabulary deck
+                const allLayersResponse = await fetch('/api/cards-by-tag-and-state', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        deck_id: selectedVocabularyDeck.id,
+                        username: currentUser,
+                        tag_prefix: 'layer_',
+                        state: 'new'
+                    })
+                });
+
+                const allLayersResult = await allLayersResponse.json();
+                if (!allLayersResult.success || !allLayersResult.cards || allLayersResult.cards.length === 0) {
+                    console.log('No layer tags found in vocabulary deck');
+                    document.getElementById('current-layer-tag').textContent = 'None';
+                    document.getElementById('vocab-status').textContent = 'Waiting for vocabulary definitions...';
+                    document.getElementById('vocab-status').className = 'session-status status-waiting';
+                    document.getElementById('vocab-cards-remaining').textContent = '0';
+                    document.getElementById('vocab-controls').classList.add('hidden');
+                    return;
+                }
+
+                // Extract all unique layer tags from vocabulary deck
+                const allLayerTags = new Set();
+                const cardsByLayer = {};
+
+                allLayersResult.cards.forEach(card => {
+                    if (card.tags) {
+                        card.tags.forEach(tag => {
+                            if (tag.startsWith('layer_')) {
+                                allLayerTags.add(tag);
+                                if (!cardsByLayer[tag]) {
+                                    cardsByLayer[tag] = [];
+                                }
+                                cardsByLayer[tag].push(card);
+                            }
+                        });
+                    }
+                });
+
+                // Sort all layers by length (longest first) - LIFO ordering
+                const sortedAllLayers = Array.from(allLayerTags).sort((a, b) => b.length - a.length);
+
+                // Initialize completed layers tracking if not exists
+                if (!vocabularySession.completedLayers) {
+                    vocabularySession.completedLayers = [];
+                }
+
+                // Find next layer to study (first uncompleted layer)
+                let nextLayerToStudy = null;
+                for (const layerTag of sortedAllLayers) {
+                    if (!vocabularySession.completedLayers.includes(layerTag)) {
+                        nextLayerToStudy = layerTag;
+                        break;
+                    }
+                }
+
+                if (!nextLayerToStudy) {
+                    // All layers completed
+                    await completeVocabularySession();
+                    return;
+                }
+
+                console.log(`Next layer to study: ${nextLayerToStudy}`);
+                console.log(`Available layers: ${sortedAllLayers.join(', ')}`);
+                console.log(`Completed layers: ${vocabularySession.completedLayers.join(', ')}`);
+
+                // Step 2: Check if there's an active custom study session for this layer
                 const decksResponse = await fetch('/api/decks', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1522,76 +1590,39 @@ async def home(request: Request):
                 }
 
                 const customStudyDeck = decksResult.decks.find(deck => deck.name === 'Custom Study Session');
-                if (!customStudyDeck) {
-                    console.log('No Custom Study Session deck found');
-                    document.getElementById('current-layer-tag').textContent = 'None';
-                    document.getElementById('vocab-status').textContent = 'Waiting for custom study session';
-                    document.getElementById('vocab-status').className = 'session-status status-waiting';
-                    document.getElementById('vocab-cards-remaining').textContent = '0';
-                    document.getElementById('vocab-controls').classList.add('hidden');
-                    return;
-                }
 
-                console.log(`Found Custom Study Session deck: ${customStudyDeck.id}`);
+                // Check if current custom study session matches the layer we want to study
+                const needsNewSession = !customStudyDeck ||
+                    vocabularySession.currentLayer !== nextLayerToStudy ||
+                    !vocabularySession.isActive;
 
-                // Check if we can get cards from this custom study session
-                const cardsResponse = await fetch('/api/cards-by-tag-and-state', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        deck_id: customStudyDeck.id,
-                        username: currentUser,
-                        tag_prefix: 'layer_',
-                        state: 'new'
-                    })
-                });
+                if (needsNewSession) {
+                    console.log(`Need to create custom study session for layer: ${nextLayerToStudy}`);
 
-                const cardsResult = await cardsResponse.json();
-                if (cardsResult.success && cardsResult.cards && cardsResult.cards.length > 0) {
-                    // Extract layer tags from cards to determine active layer
-                    const layerTags = new Set();
-                    cardsResult.cards.forEach(card => {
-                        if (card.tags) {
-                            card.tags.forEach(tag => {
-                                if (tag.startsWith('layer_')) {
-                                    layerTags.add(tag);
-                                }
-                            });
-                        }
-                    });
-
-                    if (layerTags.size > 0) {
-                        // Get the longest layer tag (most specific)
-                        const activeLayer = Array.from(layerTags).sort((a, b) => b.length - a.length)[0];
-
-                        // Update UI to show active layer
-                        document.getElementById('current-layer-tag').textContent = activeLayer;
-                        document.getElementById('vocab-status').textContent = `Layer: ${activeLayer}`;
-                        document.getElementById('vocab-status').className = 'session-status status-active';
-                        document.getElementById('vocab-cards-remaining').textContent = cardsResult.cards.length;
-
-                        // Store current layer info
-                        vocabularySession.currentLayer = activeLayer;
-                        vocabularySession.currentCustomDeckId = customStudyDeck.id;
-                        vocabularySession.isActive = true;
-                        vocabularySession.cardsRemaining = cardsResult.cards.length;
-
-                        // Show vocabulary controls
-                        document.getElementById('vocab-controls').classList.remove('hidden');
-
-                        // Start studying from this custom study session (behave like grammar session)
-                        if (!vocabularySession.currentCard) {
-                            await startVocabularySessionFromDeck(customStudyDeck.id);
-                        }
-                    }
+                    // Create custom study session for the next layer
+                    await createCustomStudySessionForLayer(nextLayerToStudy);
                 } else {
-                    console.log('No cards found in Custom Study Session');
-                    document.getElementById('current-layer-tag').textContent = 'None';
-                    document.getElementById('vocab-status').textContent = 'No cards in session';
-                    document.getElementById('vocab-status').className = 'session-status status-waiting';
-                    document.getElementById('vocab-cards-remaining').textContent = '0';
-                    document.getElementById('vocab-controls').classList.add('hidden');
+                    console.log(`Using existing custom study session for layer: ${nextLayerToStudy}`);
+
+                    // Verify the existing session has cards and start studying
+                    await startVocabularySessionFromDeck(customStudyDeck.id);
                 }
+
+                // Update UI with comprehensive layer information
+                document.getElementById('current-layer-tag').textContent = nextLayerToStudy;
+                document.getElementById('vocab-status').textContent = `Layer: ${nextLayerToStudy}`;
+                document.getElementById('vocab-status').className = 'session-status status-active';
+                document.getElementById('vocab-cards-remaining').textContent = cardsByLayer[nextLayerToStudy]?.length || '0';
+
+                // Store comprehensive layer information
+                vocabularySession.currentLayer = nextLayerToStudy;
+                vocabularySession.availableLayers = sortedAllLayers;
+                vocabularySession.cardsByLayer = cardsByLayer;
+                vocabularySession.cardsRemaining = cardsByLayer[nextLayerToStudy]?.length || 0;
+
+                // Show vocabulary controls
+                document.getElementById('vocab-controls').classList.remove('hidden');
+
             } catch (error) {
                 console.error('Error checking vocabulary session:', error);
             }
@@ -1709,6 +1740,48 @@ async def home(request: Request):
                 }
             } catch (error) {
                 console.error('Error starting vocabulary study session:', error);
+            }
+        }
+
+        async function createCustomStudySessionForLayer(layerTag) {
+            try {
+                console.log(`Creating custom study session for layer: ${layerTag}`);
+
+                // Close any existing custom study session first
+                if (vocabularySession.currentCustomDeckId) {
+                    await fetch('/api/close-custom-study-session', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            deck_id: vocabularySession.currentCustomDeckId,
+                            username: currentUser
+                        })
+                    });
+                }
+
+                // Create custom study session for the layer
+                const createResponse = await fetch('/api/create-custom-study-session', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        deck_id: selectedVocabularyDeck.id,
+                        username: currentUser,
+                        tag: layerTag,
+                        card_limit: 100
+                    })
+                });
+
+                const createResult = await createResponse.json();
+                if (createResult.success) {
+                    console.log(`Custom study session created for layer ${layerTag}, deck ID: ${createResult.custom_study_deck_id}`);
+
+                    // Start studying from the new custom study session
+                    await startVocabularySessionFromDeck(createResult.custom_study_deck_id);
+                } else {
+                    console.error('Failed to create custom study session:', createResult.error);
+                }
+            } catch (error) {
+                console.error('Error creating custom study session for layer:', error);
             }
         }
 
@@ -1861,11 +1934,22 @@ async def home(request: Request):
                         document.getElementById('vocab-cards-remaining').textContent = vocabularySession.cardsRemaining;
                     }
                 } else if (result.message && result.message.includes('No more cards')) {
-                    // Current layer completed - automatically check for next layer
-                    console.log(`Layer ${vocabularySession.currentLayer} completed, checking for next layer...`);
+                    // Current layer completed - mark as completed and check for next layer
+                    console.log(`Layer ${vocabularySession.currentLayer} completed, marking as completed and checking for next layer...`);
+
+                    // Mark current layer as completed
+                    if (!vocabularySession.completedLayers) {
+                        vocabularySession.completedLayers = [];
+                    }
+                    if (!vocabularySession.completedLayers.includes(vocabularySession.currentLayer)) {
+                        vocabularySession.completedLayers.push(vocabularySession.currentLayer);
+                        console.log(`Marked layer ${vocabularySession.currentLayer} as completed`);
+                        console.log(`Completed layers now: ${vocabularySession.completedLayers.join(', ')}`);
+                    }
 
                     // Reset current card and check for next layer
                     vocabularySession.currentCard = null;
+                    vocabularySession.isActive = false;
                     document.getElementById('vocabulary-card-display').classList.add('hidden');
                     document.getElementById('vocab-define-section').classList.add('hidden');
                     document.getElementById('vocabulary-answers').classList.add('hidden');
