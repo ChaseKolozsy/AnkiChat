@@ -1079,7 +1079,7 @@ FONTOS TAG INFORMÁCIÓ:
             custom_study_params = {
                 "new_limit_delta": 0,
                 "cram": {
-                    "kind": "CRAM_KIND_DUE",
+                    "kind": "CRAM_KIND_NEW",
                     "card_limit": 100,  # Process all cards in the layer
                     "tags_to_include": [layer_tag],
                     "tags_to_exclude": []
