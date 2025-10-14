@@ -2960,6 +2960,20 @@ async def _try_resume_parent_layer(completed_deck_id: int) -> bool:
             logger.warning("Claude integration not available for parent layer resume")
             return False
 
+        # CRITICAL: Close the completed custom study session first to release the collection lock
+        logger.info(f"===== CLOSING COMPLETED SESSION FOR DECK {completed_deck_id} =====")
+        try:
+            from AnkiClient.src.operations.study_ops import study
+            study(
+                deck_id=completed_deck_id,
+                action="close",
+                username="chase"
+            )
+            logger.info(f"✅ Closed completed custom study session {completed_deck_id}")
+        except Exception as e:
+            logger.error(f"Error closing completed session: {e}")
+            # Continue anyway - might already be closed
+
         # Get the current layer tag from the integration
         current_layer = claude_integration.current_layer_tag
         if not current_layer:
