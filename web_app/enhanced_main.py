@@ -1608,6 +1608,30 @@ async def home(request: Request):
                     const backendSessionResult = await backendSessionResponse.json();
                     console.log('Backend session response:', backendSessionResult);
 
+                    // Check if grammar session was resumed after completing all vocabulary layers
+                    if (backendSessionResult.success && backendSessionResult.grammar_session_resumed) {
+                        console.log('===== GRAMMAR SESSION RESUMED - DISPLAYING CARD =====');
+                        const currentCard = backendSessionResult.current_card;
+
+                        if (currentCard && currentCard.card_id) {
+                            grammarSession.currentCard = currentCard;
+                            displayGrammarCard(currentCard);
+
+                            // Update grammar session status
+                            updateSessionStatus('grammar-status', 'Active', 'status-active');
+                            grammarSession.active = true;
+
+                            // Hide Claude processing UI
+                            document.getElementById('claude-status').classList.add('hidden');
+                            claudeProcessing = false;
+
+                            console.log('✅ Grammar session resumed and card displayed');
+                            return;
+                        } else {
+                            console.warn('Grammar session resumed but no card available');
+                        }
+                    }
+
                     if (backendSessionResult.success && backendSessionResult.session_available) {
                         console.log('===== BACKEND SESSION AVAILABLE - LOADING NOW =====');
                         console.log('✅ Backend has created a vocabulary session, loading it now...');
@@ -2911,6 +2935,22 @@ async def get_vocabulary_session_status():
             logger.warning("Claude integration not available")
             return JSONResponse({"success": False, "error": "Claude integration not available"})
 
+        # Check if grammar session was resumed (after root layer completion)
+        grammar_resumed = getattr(claude_integration, 'grammar_session_resumed', False)
+        if grammar_resumed:
+            logger.info("===== GRAMMAR SESSION WAS RESUMED - RETURNING TO FRONTEND =====")
+            current_card = claude_integration.grammar_session.current_card
+            logger.info(f"Grammar card: {current_card.get('card_id') if current_card else 'None'}")
+
+            # Clear the flag after retrieval
+            claude_integration.grammar_session_resumed = False
+
+            return JSONResponse({
+                "success": True,
+                "grammar_session_resumed": True,
+                "current_card": current_card
+            })
+
         # Retrieve the last created vocabulary session
         session_info = claude_integration.last_vocabulary_session
         logger.info(f"Retrieved last_vocabulary_session: {session_info}")
@@ -2995,9 +3035,42 @@ async def _try_resume_parent_layer(completed_deck_id: int) -> bool:
         # Parse parent layer tag by removing the last segment (after last underscore)
         # e.g., "layer_A_B_C" -> "layer_A_B"
         if '_' not in current_layer or current_layer.count('_') == 1:
-            # This is the root layer (e.g., "layer_1234"), no parent
-            logger.info(f"Layer {current_layer} is root layer, no parent to resume")
-            return False
+            # This is the root layer (e.g., "layer_1234"), no parent to resume
+            # Resume the grammar session instead
+            logger.info(f"Layer {current_layer} is root layer, resuming grammar session")
+
+            try:
+                from AnkiClient.src.operations.study_ops import study
+
+                grammar_deck_id = claude_integration.grammar_session.deck_id
+                logger.info(f"===== RESUMING GRAMMAR SESSION FOR DECK {grammar_deck_id} =====")
+
+                # Restart grammar study session
+                start_result, start_status = study(
+                    deck_id=grammar_deck_id,
+                    action="start",
+                    username="chase"
+                )
+
+                if start_status == 200 and start_result.get("card_id"):
+                    # Update integration session state
+                    claude_integration.grammar_session.current_card = start_result
+                    claude_integration.grammar_session.is_paused = False
+
+                    logger.info(f"✅ Grammar session resumed successfully")
+                    logger.info(f"Current card: {start_result.get('card_id')}")
+
+                    # Store flag indicating grammar session was resumed (not a vocabulary session)
+                    claude_integration.grammar_session_resumed = True
+
+                    return True
+                else:
+                    logger.error(f"Failed to restart grammar session: status={start_status}")
+                    return False
+
+            except Exception as e:
+                logger.error(f"Error resuming grammar session: {e}")
+                return False
 
         # Get parent layer by removing last segment
         parent_layer = '_'.join(current_layer.split('_')[:-1])
