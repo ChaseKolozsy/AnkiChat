@@ -2464,6 +2464,10 @@ async def home(request: Request):
                 alert('All vocabulary layers completed! You can now continue with the grammar session or request new definitions.');
                 console.log('All vocabulary layers marked as complete');
 
+                // Clear Claude processing flag so grammar answers can be submitted normally
+                claudeProcessing = false;
+                console.log('Cleared claudeProcessing flag - grammar session can now accept direct answers');
+
                 // Enable cached answer submission if available
                 const submitCachedBtn = document.getElementById('submit-cached-btn');
                 if (submitCachedBtn && cachedGrammarAnswer) {
