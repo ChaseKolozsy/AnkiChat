@@ -2244,9 +2244,13 @@ async def home(request: Request):
                 } else if (result.no_more_cards || (result.message && result.message.includes('No more cards'))) {
                     // Current layer completed - mark as completed and check for next layer
                     console.log(`Layer ${vocabularySession.currentLayer} completed, marking as completed and checking for next layer...`);
+                    console.log(`Backend parent_layer_resumed: ${result.parent_layer_resumed}`);
 
-                    // Close current custom study session
-                    if (vocabularySession.currentCustomDeckId) {
+                    // Only close the session if the backend hasn't already resumed a parent layer
+                    // If parent_layer_resumed is true, the backend has already closed the old session
+                    // and started a new one, so we shouldn't close it again
+                    if (!result.parent_layer_resumed && vocabularySession.currentCustomDeckId) {
+                        console.log('Backend did not resume parent layer, closing current session manually');
                         await fetch('/api/close-custom-study-session', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -2255,6 +2259,8 @@ async def home(request: Request):
                                 username: currentUser
                             })
                         });
+                    } else if (result.parent_layer_resumed) {
+                        console.log('✅ Backend already resumed parent layer and closed old session, skipping close');
                     }
 
                     // Mark current layer as completed
