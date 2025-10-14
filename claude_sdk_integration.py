@@ -371,9 +371,14 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
                         if expected_word_count == 0:
                             logger.warning(f"Expected word count is 0, waiting for definition request to set proper count")
                         elif found_count >= total_expected:
+                            logger.info(f"===== POLLING DETECTED ALL CARDS READY =====")
                             logger.info(f"Expected total cards reached ({found_count}/{total_expected}). Creating custom study session...")
                             logger.info(f"(Initial: {getattr(self, 'initial_card_count', 0)} + New: {expected_word_count} = Total: {total_expected})")
+                            logger.info(f"Current layer tag: {self.current_layer_tag}")
+                            logger.info(f"About to call _attempt_custom_session_creation()...")
                             await self._attempt_custom_session_creation()
+                            logger.info(f"Returned from _attempt_custom_session_creation()")
+                            logger.info(f"===== POLLING COMPLETE =====")
                             # IMPORTANT: Stop polling immediately after creating session to avoid collection lock conflicts
                             # The polling loop will exit naturally on next iteration check
                             break
@@ -1119,14 +1124,26 @@ FONTOS TAG INFORMÁCIÓ:
 
     async def _attempt_custom_session_creation(self):
         """Attempt to create a custom study session and handle retry logic"""
+        logger.info(f"===== _attempt_custom_session_creation CALLED =====")
+        logger.info(f"Current layer tag: {self.current_layer_tag}")
+        logger.info(f"About to call _create_custom_study_session({self.current_layer_tag})...")
+
         custom_session_result = await self._create_custom_study_session(self.current_layer_tag)
 
+        logger.info(f"_create_custom_study_session returned: {custom_session_result}")
+
         if custom_session_result.get('success'):
+            logger.info(f"===== SESSION CREATION SUCCESS =====")
             logger.info(f"Successfully created and started custom study session for layer {self.current_layer_tag}")
             logger.info(f"Custom deck ID: {custom_session_result.get('custom_deck_id')}")
+            logger.info(f"Session ID: {custom_session_result.get('session_id')}")
+            logger.info(f"First card: {custom_session_result.get('first_card')}")
+            logger.info(f"Stored in self.last_vocabulary_session: {self.last_vocabulary_session}")
             # Stop polling since we've created and started the session
             self.polling_active = False
+            logger.info(f"Set polling_active to False")
         else:
+            logger.error(f"===== SESSION CREATION FAILED =====")
             logger.error(f"Failed to create custom study session: {custom_session_result.get('error')}")
             # If collection not open, wait and try again
             if "CollectionNotOpen" in str(custom_session_result.get('error', '')):
@@ -1134,6 +1151,8 @@ FONTOS TAG INFORMÁCIÓ:
 
     async def _create_custom_study_session(self, layer_tag: str) -> Dict[str, Any]:
         """Create a custom study session for cards with a specific layer tag and start studying it"""
+        logger.info(f"===== _create_custom_study_session CALLED =====")
+        logger.info(f"Layer tag: {layer_tag}")
         try:
             from AnkiClient.src.operations.study_ops import create_custom_study_session, study
 
@@ -1149,6 +1168,7 @@ FONTOS TAG INFORMÁCIÓ:
             }
 
             logger.info(f"Creating custom study session for layer {layer_tag} with params: {custom_study_params}")
+            logger.info(f"Vocab deck ID: {self.vocab_deck_id}")
 
             # Create the custom study session
             response_data, status_code = create_custom_study_session(
@@ -1178,11 +1198,14 @@ FONTOS TAG INFORMÁCIÓ:
             )
 
             if study_status == 200 and study_result.get('card_id'):
+                logger.info(f"===== STUDY SESSION STARTED SUCCESSFULLY =====")
                 logger.info(f"Successfully started study session for custom deck {created_deck_id}")
+                logger.info(f"Study result: {study_result}")
 
                 # Fetch note_id if not present in study_result
                 card_id = study_result.get('card_id')
                 note_id = study_result.get('note_id')
+                logger.info(f"Fetching note_id: card_id={card_id}, note_id={note_id}")
                 if not note_id and card_id:
                     try:
                         from AnkiClient.src.operations.card_ops import get_card_contents
@@ -1198,6 +1221,7 @@ FONTOS TAG INFORMÁCIÓ:
                 if note_id:
                     first_card_with_note_id['note_id'] = note_id
 
+                logger.info(f"Building session_info dict...")
                 session_info = {
                     'success': True,
                     'custom_deck_id': created_deck_id,
@@ -1205,11 +1229,15 @@ FONTOS TAG INFORMÁCIÓ:
                     'first_card': first_card_with_note_id,
                     'layer_tag': layer_tag
                 }
+                logger.info(f"Session info built: {session_info}")
+                logger.info(f"===== STORING SESSION INFO IN self.last_vocabulary_session =====")
                 # Store session info for frontend retrieval
                 self.last_vocabulary_session = session_info
+                logger.info(f"STORED! Verifying: self.last_vocabulary_session = {self.last_vocabulary_session}")
                 # Update current_layer_tag to the session's layer so nested definitions work correctly
                 self.current_layer_tag = layer_tag
-                logger.info(f"Stored vocabulary session info for frontend and updated current_layer_tag to: {layer_tag}")
+                logger.info(f"Updated current_layer_tag to: {layer_tag}")
+                logger.info(f"===== SESSION INFO STORAGE COMPLETE =====")
                 return session_info
             else:
                 logger.error(f"Failed to start study session for custom deck: {study_result}")

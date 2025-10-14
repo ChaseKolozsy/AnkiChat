@@ -1596,16 +1596,20 @@ async def home(request: Request):
 
         async function checkVocabularySession() {
             try {
+                console.log('===== checkVocabularySession CALLED =====');
                 // Step 0: First check if the backend has created a vocabulary session for us
                 try {
+                    console.log('Fetching /api/get-vocabulary-session-status...');
                     const backendSessionResponse = await fetch('/api/get-vocabulary-session-status', {
                         method: 'GET',
                         headers: { 'Content-Type': 'application/json' }
                     });
 
                     const backendSessionResult = await backendSessionResponse.json();
+                    console.log('Backend session response:', backendSessionResult);
 
                     if (backendSessionResult.success && backendSessionResult.session_available) {
+                        console.log('===== BACKEND SESSION AVAILABLE - LOADING NOW =====');
                         console.log('✅ Backend has created a vocabulary session, loading it now...');
                         const sessionInfo = backendSessionResult;
 
@@ -1657,9 +1661,13 @@ async def home(request: Request):
 
                         console.log(`✅ Vocabulary session loaded and displayed (${cardCount} cards in layer)`);
                         return;
+                    } else {
+                        console.log('===== NO BACKEND SESSION AVAILABLE =====');
+                        console.log('Backend response indicates no session available, checking client-side layers...');
                     }
                 } catch (backendError) {
-                    console.log('Backend session check failed or no session available:', backendError);
+                    console.error('===== BACKEND SESSION CHECK ERROR =====');
+                    console.error('Backend session check failed:', backendError);
                     // Continue to client-side layer checking
                 }
 
@@ -2359,6 +2367,10 @@ async def home(request: Request):
                     document.getElementById('vocab-define-section').classList.add('hidden');
                     document.getElementById('vocabulary-answers').classList.add('hidden');
 
+                    // IMPORTANT: Restart polling to detect the new nested vocabulary session
+                    console.log('Restarting vocabulary session polling for nested layer...');
+                    startVocabularySessionPolling();
+
                     // No need to refresh layers since we already stored the nested layer tag client-side
                     // The vocabulary session will automatically detect the new nested layer when polling
                 } else {
@@ -2847,15 +2859,24 @@ async def get_vocabulary_session_status():
     global claude_integration
 
     try:
+        logger.info("===== /api/get-vocabulary-session-status CALLED =====")
         if not claude_integration:
+            logger.warning("Claude integration not available")
             return JSONResponse({"success": False, "error": "Claude integration not available"})
 
         # Retrieve the last created vocabulary session
         session_info = claude_integration.last_vocabulary_session
+        logger.info(f"Retrieved last_vocabulary_session: {session_info}")
 
         if session_info:
+            logger.info(f"===== SESSION AVAILABLE - RETURNING TO FRONTEND =====")
+            logger.info(f"Custom deck ID: {session_info.get('custom_deck_id')}")
+            logger.info(f"Session ID: {session_info.get('session_id')}")
+            logger.info(f"Layer tag: {session_info.get('layer_tag')}")
+            logger.info(f"First card: {session_info.get('first_card')}")
             # Clear the session info after retrieval so it's only returned once
             claude_integration.last_vocabulary_session = None
+            logger.info("Cleared last_vocabulary_session after retrieval")
 
             return JSONResponse({
                 "success": True,
@@ -2866,12 +2887,14 @@ async def get_vocabulary_session_status():
                 "layer_tag": session_info.get('layer_tag')
             })
         else:
+            logger.info("No session available (last_vocabulary_session is None)")
             return JSONResponse({
                 "success": True,
                 "session_available": False
             })
 
     except Exception as e:
+        logger.error(f"Error in get_vocabulary_session_status: {e}")
         return JSONResponse({"success": False, "error": str(e)})
 
 @app.post("/api/close-all-sessions")
