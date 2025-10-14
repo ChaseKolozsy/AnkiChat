@@ -1559,6 +1559,13 @@ async def home(request: Request):
                             document.getElementById('claude-status').classList.add('hidden');
                             claudeProcessing = false;
 
+                            // Stop vocabulary session polling since all layers are complete
+                            if (vocabularyPollingInterval) {
+                                clearInterval(vocabularyPollingInterval);
+                                vocabularyPollingInterval = null;
+                                console.log('Stopped vocabulary polling - grammar session resumed');
+                            }
+
                             console.log('✅ Grammar session resumed and card displayed');
                             return;
                         } else {
