@@ -444,24 +444,11 @@ async def home(request: Request):
 
                     <div class="claude-status hidden" id="claude-status">
                         <h4>🤖 Claude SDK Processing</h4>
-                        <p>Generating definitions with context...</p>
-                        <div>Your answer has been cached. You can:</div>
-                        <ul>
-                            <li>Study vocabulary cards below while Claude works</li>
-                            <li>Submit your cached answer to resume grammar session</li>
-                        </ul>
-                        <div class="form-group" style="margin-top: 10px;">
-                            <label>Cached Answer:</label>
-                            <div id="cached-answer-display" style="padding: 10px; background: #404040; border-radius: 6px;">
-                                <!-- Cached answer will be shown here -->
-                            </div>
-                            <div id="vocab-completion-requirement" style="margin: 10px 0; padding: 8px; background: #2d1b69; border-radius: 6px; border: 1px solid #ff6b35;">
-                                <strong>📖 Complete vocabulary cards first:</strong> Study all vocabulary cards and submit the auto-session before resuming grammar.
-                            </div>
-                            <button class="btn btn-good" onclick="submitCachedAnswer()" id="submit-cached-btn" style="margin-top: 10px;" disabled>
-                                Submit Cached Answer & Resume Grammar
-                            </button>
-                        </div>
+                        <p>Generating vocabulary definitions...</p>
+                        <p style="margin-top: 10px; color: #a8dadc;">
+                            <strong>Study vocabulary cards below while Claude works.</strong><br>
+                            Grammar session will automatically resume when all layers are complete.
+                        </p>
                     </div>
                 </div>
             </div>
@@ -501,9 +488,6 @@ async def home(request: Request):
 
                     <div class="vocab-controls hidden" id="vocab-controls">
                         <button class="btn" onclick="checkVocabularySession()">🔄 Check Session</button>
-                        <button class="btn btn-vocabulary" onclick="completeVocabularySession()">
-                            Complete All Layers
-                        </button>
                     </div>
                 </div>
             </div>
@@ -532,7 +516,6 @@ async def home(request: Request):
         };
         let pollingInterval = null;
         let claudeProcessing = false;
-        let cachedGrammarAnswer = null;  // Store cached answer for later submission
         let cachedCounts = { new: 0, learning: 0, review: 0, total: 0 };  // Cache counts to avoid collection conflicts
 
         // Cached credentials for on-demand sync (simple XOR encryption for basic obfuscation)
@@ -1514,21 +1497,13 @@ async def home(request: Request):
                 const result = await response.json();
                 if (result.success) {
                     if (claudeProcessing) {
-                        // Store the cached answer for later submission
-                        cachedGrammarAnswer = {
-                            card_id: grammarSession.currentCard.card_id,
-                            answer: answer,
-                            card: grammarSession.currentCard
-                        };
+                        // Grammar session paused while Claude processes vocabulary
+                        // System will auto-resume grammar session after all vocabulary layers complete
+                        alert(`Grammar session paused while Claude generates vocabulary definitions. Study vocabulary cards below - grammar will auto-resume when complete.`);
 
-                        // Show cached answer in UI
-                        const answerText = ['', 'Again', 'Hard', 'Good', 'Easy'][answer] || answer;
-                        document.getElementById('cached-answer-display').innerHTML =
-                            `Card: ${grammarSession.currentCard.fields?.Word || 'Unknown'}<br>Answer: ${answer} - ${answerText}`;
-
+                        // Show Claude processing UI
                         document.getElementById('claude-status').classList.remove('hidden');
-
-                        alert(`Answer ${answer} cached. You can now study vocabulary cards below or submit the cached answer to resume grammar session.`);
+                        updateSessionStatus('grammar-status', 'Paused for Vocabulary', 'status-paused');
                     } else {
                         // Regular answer processing
                         if (result.next_card) {
@@ -1546,48 +1521,7 @@ async def home(request: Request):
             }
         }
 
-        async function submitCachedAnswer() {
-            if (!cachedGrammarAnswer) {
-                alert('No cached answer to submit');
-                return;
-            }
-
-            try {
-                const response = await fetch('/api/answer-grammar-card', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        username: currentUser,
-                        card_id: cachedGrammarAnswer.card_id,
-                        answer: cachedGrammarAnswer.answer,
-                        is_cached_answer: true  // Important flag
-                    })
-                });
-
-                const result = await response.json();
-                if (result.success) {
-                    alert('Grammar session resumed with cached answer!');
-
-                    // Clear cached answer
-                    cachedGrammarAnswer = null;
-                    document.getElementById('claude-status').classList.add('hidden');
-
-                    // Update session status
-                    updateSessionStatus('grammar-status', 'Active', 'status-active');
-                    claudeProcessing = false;
-
-                    // Get next card if available
-                    if (result.answer_result && result.answer_result.current_card) {
-                        grammarSession.currentCard = result.answer_result.current_card;
-                        displayGrammarCard(result.answer_result.current_card);
-                    }
-                } else {
-                    alert('Error submitting cached answer: ' + result.error);
-                }
-            } catch (error) {
-                alert('Error submitting cached answer: ' + error.message);
-            }
-        }
+        // submitCachedAnswer() removed - system now auto-resumes grammar session
 
         // OLD answerVocabularyCard() and showVocabularyFeedback() removed
         // See new layer-based vocabulary functions below
@@ -2449,60 +2383,7 @@ async def home(request: Request):
             }
         }
 
-        async function completeVocabularySession() {
-            try {
-                console.log('Completing all vocabulary layers');
-
-                // Close any active vocabulary session
-                if (vocabularySession.currentCustomDeckId) {
-                    await fetch('/api/close-custom-study-session', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            deck_id: vocabularySession.currentCustomDeckId,
-                            username: currentUser
-                        })
-                    });
-                }
-
-                // Reset vocabulary session state completely
-                vocabularySession = {
-                    active: false,
-                    currentLayer: null,
-                    currentCustomDeckId: null,
-                    currentCard: null,
-                    availableLayers: [],
-                    completedLayers: []
-                };
-
-                // Update UI
-                document.getElementById('vocabulary-card-display').classList.add('hidden');
-                document.getElementById('vocab-define-section').classList.add('hidden');
-                document.getElementById('vocab-flip-container').classList.add('hidden');
-                document.getElementById('vocabulary-answers').classList.add('hidden');
-                document.getElementById('vocab-controls').classList.add('hidden');
-                document.getElementById('current-layer-tag').textContent = 'None';
-                document.getElementById('vocab-cards-remaining').textContent = '0';
-                updateSessionStatus('vocab-status', 'All Layers Complete', 'status-waiting');
-
-                alert('All vocabulary layers completed! You can now continue with the grammar session or request new definitions.');
-                console.log('All vocabulary layers marked as complete');
-
-                // Clear Claude processing flag so grammar answers can be submitted normally
-                claudeProcessing = false;
-                console.log('Cleared claudeProcessing flag - grammar session can now accept direct answers');
-
-                // Enable cached answer submission if available
-                const submitCachedBtn = document.getElementById('submit-cached-btn');
-                if (submitCachedBtn && cachedGrammarAnswer) {
-                    submitCachedBtn.disabled = false;
-                    console.log('Enabled cached answer submission for grammar session resume');
-                }
-            } catch (error) {
-                console.error('Error completing vocabulary session:', error);
-                alert('Error completing vocabulary session: ' + error.message);
-            }
-        }
+        // completeVocabularySession() removed - system now auto-resumes after last layer completes
 
         // ===== OLD QUEUE-BASED FUNCTIONS (TO BE REMOVED) =====
         async function submitVocabularySession() {
@@ -2738,7 +2619,7 @@ async def request_vocabulary_definitions(request: Request):
 
 @app.post("/api/answer-grammar-card")
 async def answer_grammar_card(request: Request):
-    """Answer grammar card (with caching if Claude is processing)"""
+    """Answer grammar card"""
     global claude_integration, current_user
 
     try:
@@ -2746,60 +2627,18 @@ async def answer_grammar_card(request: Request):
         card_id = data.get("card_id")
         answer = data.get("answer")
         claude_processing = data.get("claude_processing", False)
-        is_cached_answer = data.get("is_cached_answer", False)  # New flag for cached answers
 
         if not claude_integration:
             return JSONResponse({"success": False, "error": "Claude integration not available"})
 
         if claude_processing:
-            # Cache the answer while Claude SDK is processing
-            await claude_integration.cache_user_answer(card_id, answer)
+            # Grammar session is paused while Claude processes vocabulary
+            # Don't submit the answer - system will auto-resume grammar session later
             return JSONResponse({
                 "success": True,
-                "cached": True,
-                "message": "Answer cached. Continue with vocabulary study or submit this cached answer to resume grammar session."
+                "paused": True,
+                "message": "Grammar session paused. System will auto-resume after vocabulary layers complete."
             })
-        elif is_cached_answer:
-            # This is the submission of a previously cached answer
-            # Restart grammar session and auto-answer only if the popped card matches
-            try:
-                from AnkiClient.src.operations import study_ops
-
-                logger.info("Resuming grammar session; will auto-answer only if current card matches cached")
-
-                # Restart grammar study session to get the current card
-                start_result, start_status = study_ops.study(
-                    deck_id=claude_integration.grammar_session.deck_id,
-                    action="start",
-                    username=current_user or "chase"
-                )
-
-                if start_status == 200 and start_result.get("card_id"):
-                    # Update integration session state
-                    claude_integration.grammar_session.current_card = start_result
-                    claude_integration.grammar_session.is_paused = False
-
-                    # Attempt auto-answer if the current card matches a cached answer
-                    auto = await claude_integration.auto_answer_if_current_matches(start_result)
-
-                    # Determine which card to display now
-                    card_to_display = auto.get("next_card") if auto.get("applied") else start_result
-
-                    return JSONResponse({
-                        "success": True,
-                        "session_restarted": True,
-                        "grammar_session_resumed": True,
-                        # Keep legacy shape expected by frontend submitCachedAnswer()
-                        "answer_result": {"current_card": card_to_display},
-                        "auto_answer_applied": auto.get("applied", False),
-                        "message": "Grammar session resumed" if not auto.get("applied") else "Grammar session resumed and cached answer auto-applied"
-                    })
-                else:
-                    return JSONResponse({"success": False, "error": "Failed to restart grammar session"})
-
-            except Exception as e:
-                logger.error(f"Error restarting grammar session with cached answer: {e}")
-                return JSONResponse({"success": False, "error": str(e)})
         else:
             # Regular grammar card answer (session should already be active)
             try:
@@ -2816,15 +2655,11 @@ async def answer_grammar_card(request: Request):
                 if next_card and isinstance(next_card, dict) and next_card.get("card_id"):
                     claude_integration.grammar_session.current_card = next_card
 
-                # Attempt auto-answer if the next card matches any cached answer
-                auto = await claude_integration.auto_answer_if_current_matches(next_card)
-
-                # Normalize response so frontend can display a next_card
+                # Return next card
                 response_payload = {
                     "success": True,
                     "answer_result": answer_result[0],
-                    "next_card": auto.get("next_card") if auto.get("applied") else next_card,
-                    "auto_answer_applied": auto.get("applied", False)
+                    "next_card": next_card
                 }
 
                 return JSONResponse(response_payload)
