@@ -1710,9 +1710,37 @@ async def home(request: Request):
                 console.log(`Completed layers: ${vocabularySession.completedLayers.join(', ')}`);
 
                 // Step 2: Check if Claude Code has finished creating all expected cards for this layer
+                // If expectedCardsForLayer is not set, we might be resuming a parent layer after completing a nested layer
+                // In this case, try to get the backend to create a custom study session for this layer
                 if (!vocabularySession.expectedCardsForLayer) {
-                    console.log(`No expected card count set for layer ${nextLayerToStudy}, skipping vocabulary session start`);
-                    return;
+                    console.log(`No expected card count set for layer ${nextLayerToStudy}`);
+                    console.log(`This might be resuming a parent layer - requesting backend to create custom study session`);
+
+                    try {
+                        // Request backend to create a custom study session for this layer
+                        const resumeResponse = await fetch('/api/resume-layer-session', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                layer_tag: nextLayerToStudy,
+                                username: currentUser
+                            })
+                        });
+
+                        const resumeResult = await resumeResponse.json();
+                        if (resumeResult.success) {
+                            console.log(`✅ Backend created custom study session for parent layer ${nextLayerToStudy}`);
+                            // The backend has stored the session in last_vocabulary_session
+                            // Polling will pick it up on the next iteration
+                            return;
+                        } else {
+                            console.warn(`Failed to resume layer ${nextLayerToStudy}: ${resumeResult.error}`);
+                            return;
+                        }
+                    } catch (error) {
+                        console.error(`Error resuming layer ${nextLayerToStudy}:`, error);
+                        return;
+                    }
                 }
 
                 // Count current cards for this layer to check if Claude Code is done
@@ -2242,6 +2270,10 @@ async def home(request: Request):
                     document.getElementById('vocab-define-section').classList.add('hidden');
                     document.getElementById('vocab-flip-container').classList.add('hidden');
                     document.getElementById('vocabulary-answers').classList.add('hidden');
+
+                    // IMPORTANT: Restart polling to detect the parent/next layer session
+                    console.log('Restarting vocabulary session polling to detect parent/next layer...');
+                    startVocabularySessionPolling();
 
                     // Check for next layer automatically (LIFO - longest/most recent first)
                     await checkVocabularySession();
@@ -3334,6 +3366,50 @@ async def close_custom_study_session_endpoint(request: Request):
 
     except Exception as e:
         logger.error(f"Error closing custom study session: {e}")
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+
+@app.post("/api/resume-layer-session")
+async def resume_layer_session(request: Request):
+    """Resume/restart a vocabulary layer by creating a new custom study session"""
+    global claude_integration
+
+    try:
+        data = await request.json()
+        layer_tag = data.get('layer_tag')
+        username = data.get('username')
+
+        if not layer_tag or not username:
+            return JSONResponse({"error": "layer_tag and username are required"}, status_code=400)
+
+        if not claude_integration:
+            return JSONResponse({"error": "Claude integration not available"}, status_code=500)
+
+        logger.info(f"===== RESUME LAYER SESSION REQUEST =====")
+        logger.info(f"Layer tag: {layer_tag}")
+        logger.info(f"Username: {username}")
+
+        # Create a custom study session for this layer using the backend integration
+        session_result = await claude_integration._create_custom_study_session(layer_tag)
+
+        if session_result.get('success'):
+            logger.info(f"✅ Successfully created custom study session for resumed layer {layer_tag}")
+            logger.info(f"Custom deck ID: {session_result.get('custom_deck_id')}")
+            return JSONResponse({
+                "success": True,
+                "message": f"Custom study session created for layer {layer_tag}",
+                "custom_deck_id": session_result.get('custom_deck_id'),
+                "session_id": session_result.get('session_id'),
+                "layer_tag": layer_tag
+            })
+        else:
+            logger.error(f"Failed to create custom study session for layer {layer_tag}: {session_result.get('error')}")
+            return JSONResponse({
+                "success": False,
+                "error": f"Failed to create custom study session: {session_result.get('error')}"
+            }, status_code=500)
+
+    except Exception as e:
+        logger.error(f"Error resuming layer session: {e}")
         return JSONResponse({"success": False, "error": str(e)}, status_code=500)
 
 # CLI interface
