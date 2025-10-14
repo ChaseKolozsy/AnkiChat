@@ -1692,22 +1692,27 @@ async def home(request: Request):
 
                 // Find next layer to study (first uncompleted layer)
                 let nextLayerToStudy = null;
+                console.log(`🔍 Finding next layer to study from ${sortedAllLayers.length} available layers...`);
                 for (const layerTag of sortedAllLayers) {
+                    console.log(`  Checking layer: ${layerTag}, completed: ${vocabularySession.completedLayers.includes(layerTag)}`);
                     if (!vocabularySession.completedLayers.includes(layerTag)) {
                         nextLayerToStudy = layerTag;
+                        console.log(`  ✅ Found next layer to study: ${layerTag}`);
                         break;
                     }
                 }
 
                 if (!nextLayerToStudy) {
                     // All layers completed
+                    console.log('🎉 All layers completed!');
                     await completeVocabularySession();
                     return;
                 }
 
-                console.log(`Next layer to study: ${nextLayerToStudy}`);
+                console.log(`===== NEXT LAYER TO STUDY: ${nextLayerToStudy} =====`);
                 console.log(`Available layers (client-side): ${sortedAllLayers.join(', ')}`);
                 console.log(`Completed layers: ${vocabularySession.completedLayers.join(', ')}`);
+                console.log(`Expected cards for layer: ${vocabularySession.expectedCardsForLayer}`);
 
                 // Step 2: Check if Claude Code has finished creating all expected cards for this layer
                 // If expectedCardsForLayer is not set, we might be resuming a parent layer after completing a nested layer
