@@ -2948,6 +2948,74 @@ async def close_all_sessions(request: Request):
     except Exception as e:
         return JSONResponse({"success": False, "error": str(e)})
 
+async def _try_resume_parent_layer(completed_deck_id: int) -> bool:
+    """
+    Try to automatically resume the parent layer when a nested vocabulary layer completes.
+    Returns True if parent layer session was created, False otherwise.
+    """
+    global claude_integration
+
+    try:
+        if not claude_integration:
+            logger.warning("Claude integration not available for parent layer resume")
+            return False
+
+        # Get the current layer tag from the integration
+        current_layer = claude_integration.current_layer_tag
+        if not current_layer:
+            logger.info("No current layer tag set, cannot determine parent layer")
+            return False
+
+        logger.info(f"Current completed layer: {current_layer}")
+
+        # Parse parent layer tag by removing the last segment (after last underscore)
+        # e.g., "layer_A_B_C" -> "layer_A_B"
+        if '_' not in current_layer or current_layer.count('_') == 1:
+            # This is the root layer (e.g., "layer_1234"), no parent
+            logger.info(f"Layer {current_layer} is root layer, no parent to resume")
+            return False
+
+        # Get parent layer by removing last segment
+        parent_layer = '_'.join(current_layer.split('_')[:-1])
+        logger.info(f"===== ATTEMPTING TO RESUME PARENT LAYER: {parent_layer} =====")
+
+        # Check if parent layer has any cards remaining
+        try:
+            from AnkiClient.src.operations.card_ops import get_cards_by_tag_and_state
+            parent_cards = get_cards_by_tag_and_state(
+                tag=parent_layer,
+                state="new",
+                username="chase",
+                inclusions=['id']
+            )
+
+            if not isinstance(parent_cards, list) or len(parent_cards) == 0:
+                logger.info(f"Parent layer {parent_layer} has no remaining cards, skipping")
+                return False
+
+            logger.info(f"Parent layer {parent_layer} has {len(parent_cards)} cards remaining")
+        except Exception as e:
+            logger.error(f"Error checking parent layer cards: {e}")
+            return False
+
+        # Create custom study session for parent layer
+        session_result = await claude_integration._create_custom_study_session(parent_layer)
+
+        if session_result.get('success'):
+            logger.info(f"✅ Successfully created custom study session for parent layer {parent_layer}")
+            logger.info(f"Custom deck ID: {session_result.get('custom_deck_id')}")
+            logger.info(f"Frontend polling will detect and load this session automatically")
+            return True
+        else:
+            logger.error(f"Failed to create custom study session for parent layer: {session_result.get('error')}")
+            return False
+
+    except Exception as e:
+        logger.error(f"Error in _try_resume_parent_layer: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False
+
 @app.post("/api/study")
 async def study_endpoint(request: Request):
     """Generic study endpoint for both grammar and vocabulary sessions"""
@@ -2977,10 +3045,16 @@ async def study_endpoint(request: Request):
         if status_code == 200:
             # Check if this is a "no more cards" message
             if isinstance(result, dict) and result.get('message') and 'No more cards' in result.get('message', ''):
+                logger.info(f"===== NO MORE CARDS DETECTED IN DECK {deck_id} =====")
+
+                # Try to automatically resume parent layer if this was a vocabulary session
+                parent_layer_resumed = await _try_resume_parent_layer(deck_id)
+
                 return JSONResponse({
                     "success": False,
                     "message": result.get('message'),
-                    "no_more_cards": True
+                    "no_more_cards": True,
+                    "parent_layer_resumed": parent_layer_resumed
                 })
 
             # Handle different response formats from study_ops
@@ -3009,10 +3083,16 @@ async def study_endpoint(request: Request):
                         "front": result.get('front', {})
                     }
                 else:
+                    logger.info(f"===== NO MORE CARDS AFTER ANSWER IN DECK {deck_id} =====")
+
+                    # Try to automatically resume parent layer if this was a vocabulary session
+                    parent_layer_resumed = await _try_resume_parent_layer(deck_id)
+
                     response_data = {
                         "success": False,
                         "message": 'No more cards in this session',
-                        "no_more_cards": True
+                        "no_more_cards": True,
+                        "parent_layer_resumed": parent_layer_resumed
                     }
             elif action == 'close':
                 response_data = {
