@@ -1460,6 +1460,10 @@ async def home(request: Request):
                     console.log(`Successfully sent vocabulary definition request with layer tag: ${layerTag}`);
                     console.log('Claude Code will create vocabulary cards with this layer tag');
 
+                    // IMPORTANT: Start polling to detect the new vocabulary session
+                    console.log('Starting vocabulary session polling...');
+                    startVocabularySessionPolling();
+
                     // No need to refresh layers since we already stored the layer tag client-side
                     // The vocabulary session will automatically detect the new layer when polling
                 } else {
