@@ -110,7 +110,14 @@ async def startup():
     # anki_client = AnkiClient()
 
     # For now, we'll simulate the client
-    claude_integration = create_claude_sdk_integration(anki_client)
+    # Load language config from current directory for initial instance
+    config = load_language_config()
+    claude_integration = create_claude_sdk_integration(
+        anki_client,
+        target_language=config['target_language'],
+        banned_language=config['banned_language'],
+        username="chase"  # Default username, will be recreated per session
+    )
 
 @app.on_event("shutdown")
 async def shutdown():
@@ -2540,7 +2547,8 @@ async def start_dual_session(request: Request):
         claude_integration = create_claude_sdk_integration(
             anki_client,
             target_language=target_language,
-            banned_language=banned_language
+            banned_language=banned_language,
+            username=username
         )
 
         current_user = username

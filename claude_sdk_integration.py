@@ -119,12 +119,15 @@ class VocabularyQueueManager:
 class ClaudeSDKIntegration:
     """Main Claude Code SDK integration class"""
 
-    def __init__(self, anki_client, target_language: str = "Hungarian", banned_language: str = "English"):
+    def __init__(self, anki_client, target_language: str = "Hungarian", banned_language: str = "English", username: str = "chase"):
         self.anki_client = anki_client
         self.target_language = target_language
         self.banned_language = banned_language
+        self.username = username
         # Map language to appropriate vocabulary tag
         self.vocabulary_tag = self._get_vocabulary_tag(target_language)
+        # Query actual vocabulary notetype from Anki
+        self.vocabulary_notetype_name, self.vocabulary_notetype_id = self._discover_vocabulary_notetype()
         self.grammar_session = StudySessionState("", 0)
         self.vocabulary_queue = VocabularyQueueManager()
         self.polling_active = False
@@ -176,6 +179,44 @@ class ClaudeSDKIntegration:
             "Mandarin": "MandarinVocabularyNote",
         }
         return vocabulary_notetypes.get(language, f"{language}VocabularyNote")
+
+    def _discover_vocabulary_notetype(self) -> Tuple[str, Optional[int]]:
+        """Query Anki for the vocabulary notetype matching the target language"""
+        try:
+            from AnkiClient.src.operations.note_ops import get_notetypes
+
+            # Get all notetypes for the user
+            notetypes = get_notetypes(username=self.username)
+
+            # Look for notetype matching pattern {Language}VocabularyNote
+            target_notetype_name = self._get_vocabulary_notetype(self.target_language)
+
+            logger.info(f"Searching for notetype: {target_notetype_name}")
+            logger.info(f"Available notetypes: {[nt.get('name') for nt in notetypes] if isinstance(notetypes, list) else notetypes}")
+
+            # Search for matching notetype
+            if isinstance(notetypes, list):
+                for notetype in notetypes:
+                    if notetype.get('name') == target_notetype_name:
+                        logger.info(f"Found vocabulary notetype: {notetype['name']} (ID: {notetype['id']})")
+                        return notetype['name'], notetype['id']
+
+                # Fallback: try to find any notetype ending with "VocabularyNote"
+                for notetype in notetypes:
+                    if notetype.get('name', '').endswith('VocabularyNote'):
+                        logger.warning(f"Using fallback notetype: {notetype['name']} (ID: {notetype['id']})")
+                        return notetype['name'], notetype['id']
+
+            # If no match found, return expected name with None for ID
+            logger.error(f"Could not find vocabulary notetype for {self.target_language}")
+            logger.warning(f"Will use notetype name '{target_notetype_name}' without ID verification")
+            return target_notetype_name, None
+
+        except Exception as e:
+            logger.error(f"Error discovering vocabulary notetype: {e}")
+            # Return fallback name without ID
+            fallback_name = self._get_vocabulary_notetype(self.target_language)
+            return fallback_name, None
 
     def set_vocabulary_deck(self, deck_id: int):
         """Optionally override the vocabulary deck ID to monitor."""
@@ -237,9 +278,13 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
    - If VOCABULARY_DECK_ID is provided in the prompt, use that deck_id
    - Otherwise, use deck_id: 1 as default
 
+   **NOTETYPE INFORMATION**:
+   - Notetype Name: {self.vocabulary_notetype_name}
+   - Notetype ID: {self.vocabulary_notetype_id if self.vocabulary_notetype_id else 'Not available - use name only'}
+
    Call mcp__anki-api__create_card with:
    - username: "chase"
-   - note_type: "{self._get_vocabulary_notetype(self.target_language)}"
+   - note_type: "{self.vocabulary_notetype_name}"
    - deck_id: [USE_VOCABULARY_DECK_ID_FROM_PROMPT_OR_1]
    - fields: {{
        "Word": "[THE_LEMMA_BASE_FORM_ONLY]",
@@ -1362,6 +1407,6 @@ FONTOS TAG INFORMÁCIÓ:
 
 
 # Factory function to create integration instance
-def create_claude_sdk_integration(anki_client, target_language: str = "Hungarian", banned_language: str = "English"):
+def create_claude_sdk_integration(anki_client, target_language: str = "Hungarian", banned_language: str = "English", username: str = "chase"):
     """Create and return Claude SDK integration instance"""
-    return ClaudeSDKIntegration(anki_client, target_language, banned_language)
+    return ClaudeSDKIntegration(anki_client, target_language, banned_language, username)
