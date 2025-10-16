@@ -76,3 +76,6 @@ claude.md
 
 # Study configurations
 StudyTypes/
+
+# Language configuration (user-specific)
+language_config.json
