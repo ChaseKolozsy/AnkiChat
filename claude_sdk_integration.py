@@ -7,6 +7,7 @@ Handles Claude Code SDK interactions for AnkiChat with context-aware word defini
 import asyncio
 import json
 import logging
+import os
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass
 from collections import deque
@@ -122,6 +123,8 @@ class ClaudeSDKIntegration:
         self.anki_client = anki_client
         self.target_language = target_language
         self.banned_language = banned_language
+        # Map language to appropriate vocabulary tag
+        self.vocabulary_tag = self._get_vocabulary_tag(target_language)
         self.grammar_session = StudySessionState("", 0)
         self.vocabulary_queue = VocabularyQueueManager()
         self.polling_active = False
@@ -144,6 +147,21 @@ class ClaudeSDKIntegration:
         self.cards_processed_in_current_layer: int = 0
         self._check_sdk_availability()
 
+    def _get_vocabulary_tag(self, language: str) -> str:
+        """Get the vocabulary tag for a given language"""
+        # Language-specific vocabulary tags (meaning "what is this")
+        language_tags = {
+            "Hungarian": "mit-jelent",
+            "Cebuano": "unsa-kini",
+            "Spanish": "que-es",
+            "French": "qu-est-ce",
+            "German": "was-ist",
+            "Japanese": "nan-desu",
+            "Korean": "mwo-eyo",
+            "Mandarin": "shi-shenme",
+        }
+        return language_tags.get(language, "vocabulary-definition")
+
     def set_vocabulary_deck(self, deck_id: int):
         """Optionally override the vocabulary deck ID to monitor."""
         try:
@@ -165,7 +183,10 @@ class ClaudeSDKIntegration:
     async def _get_context_instructions(self) -> str:
         """Load full define-with-context instructions and augment with explicit parallel/subagent + card template rules"""
         try:
-            with open('/home/chase/AnkiChat/.claude/commands/define-with-context.md', 'r') as f:
+            # Use current working directory to find .claude/commands relative to where anki-chat-web was run
+            cwd = os.getcwd()
+            commands_path = os.path.join(cwd, '.claude', 'commands', 'define-with-context.md')
+            with open(commands_path, 'r') as f:
                 content = f.read()
 
             # Append explicit directives we require for this integration
@@ -211,7 +232,7 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
        "Grammar Code": "[IF_APPLICABLE_FROM_CONTEXT]",
        "Example Sentence": "[CREATE_EXAMPLE_USING_THE_LEMMA_BASE_FORM]"
    }}
-   - tags: ["vocabulary", "mit-jelent", "from-context", "[USE_LAYER_TAG_FROM_PROMPT_IF_PROVIDED]"]
+   - tags: ["vocabulary", "{self.vocabulary_tag}", "from-context", "[USE_LAYER_TAG_FROM_PROMPT_IF_PROVIDED]"]
 
 4. **CARD TEMPLATE REQUIREMENTS**:
    - Word field: Only the {self.target_language} word (no {self.banned_language} ever)
