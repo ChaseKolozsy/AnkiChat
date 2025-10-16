@@ -118,8 +118,10 @@ class VocabularyQueueManager:
 class ClaudeSDKIntegration:
     """Main Claude Code SDK integration class"""
 
-    def __init__(self, anki_client):
+    def __init__(self, anki_client, target_language: str = "Hungarian", banned_language: str = "English"):
         self.anki_client = anki_client
+        self.target_language = target_language
+        self.banned_language = banned_language
         self.grammar_session = StudySessionState("", 0)
         self.vocabulary_queue = VocabularyQueueManager()
         self.polling_active = False
@@ -167,7 +169,7 @@ class ClaudeSDKIntegration:
                 content = f.read()
 
             # Append explicit directives we require for this integration
-            instructions = content + """
+            instructions = content + f"""
 
 ADDITIONAL SYSTEM DIRECTIVES (ENFORCED):
 
@@ -175,8 +177,8 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
 
 1. **CONTEXT SOURCE IDENTIFICATION**:
    - The word appeared in the provided card context
-   - Use ONLY Hungarian in context descriptions
-   - NO English summaries or explanations
+   - Use ONLY {self.target_language} in context descriptions
+   - NO {self.banned_language} summaries or explanations
 
 2. **DEFINITION REQUIREMENTS**:
    - **CRITICAL: DEFINE THE LEMMA/STEM, NOT CONJUGATIONS**
@@ -186,10 +188,10 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
      - Example: If asked to define "szép", define "szép" (the base adjective)
      - Example: If asked to define "házak", define "ház" (the singular noun)
      - Example: If asked to define "olvastam", define "olvasni" (the infinitive)
-   - Use ONLY Hungarian words from basic A1 Vocabulary
+   - Use ONLY {self.target_language} words from basic A1 Vocabulary
    - Use creative definitions with emojis, symbols, mathematical notation
    - Create multiple definitions/approaches
-   - AVOID English loan words (komputer→számítógép, hotel→szálloda)
+   - AVOID {self.banned_language} loan words
    - Mix strategies - not 100% emojis
 
 3. **MANDATORY ANKI CARD CREATION**:
@@ -201,18 +203,18 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
 
    Call mcp__anki-api__create_card with:
    - username: "chase"
-   - note_type: "Hungarian Vocabulary Note"
+   - note_type: "{self.target_language} Vocabulary Note"
    - deck_id: [USE_VOCABULARY_DECK_ID_FROM_PROMPT_OR_1]
-   - fields: {
+   - fields: {{
        "Word": "[THE_LEMMA_BASE_FORM_ONLY]",
        "Definition": "[YOUR_CREATIVE_DEFINITION_WITH_HTML_BR_TAGS]",
        "Grammar Code": "[IF_APPLICABLE_FROM_CONTEXT]",
        "Example Sentence": "[CREATE_EXAMPLE_USING_THE_LEMMA_BASE_FORM]"
-   }
+   }}
    - tags: ["vocabulary", "mit-jelent", "from-context", "[USE_LAYER_TAG_FROM_PROMPT_IF_PROVIDED]"]
 
 4. **CARD TEMPLATE REQUIREMENTS**:
-   - Word field: Only the Hungarian word (no English ever)
+   - Word field: Only the {self.target_language} word (no {self.banned_language} ever)
    - Definition field: Your creative explanation with HTML <br> tags for line breaks
    - Grammar Code: Include if the word has grammatical significance from context
    - Example Sentence: Create ONE example sentence using the word
@@ -226,14 +228,14 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
 
 6. **PARALLEL SUBAGENTS REQUIRED**:
    - Spawn a dedicated subagent for EACH word to define the word in parallel.
-   - Each subagent must produce a rich, multi-approach Hungarian definition (3–5 variants), mixing emojis, symbols, and minimal math where appropriate.
+   - Each subagent must produce a rich, multi-approach {self.target_language} definition (3–5 variants), mixing emojis, symbols, and minimal math where appropriate.
    - Subagents must independently call mcp__anki-api__create_card for their word when ready.
    - Do not serialize; run subagents concurrently so all words are processed quickly.
 """
             return instructions
         except FileNotFoundError:
             logger.warning("define-with-context.md not found, using default instructions")
-            return "Define the word creatively using only Hungarian, with emojis and symbols."
+            return f"Define the word creatively using only {self.target_language}, with emojis and symbols."
 
     async def start_grammar_session(self, deck_id: int) -> Dict[str, Any]:
         """Start main grammar study session"""
@@ -799,7 +801,7 @@ FONTOS TAG INFORMÁCIÓ:
 """
 
             options = ClaudeCodeOptions(
-                system_prompt="You are a Hungarian vocabulary definition expert following the define-with-context command patterns.",
+                system_prompt=f"You are a {self.target_language} vocabulary definition expert following the define-with-context command patterns.",
                 max_turns=3
             )
 
@@ -1324,6 +1326,6 @@ FONTOS TAG INFORMÁCIÓ:
 
 
 # Factory function to create integration instance
-def create_claude_sdk_integration(anki_client):
+def create_claude_sdk_integration(anki_client, target_language: str = "Hungarian", banned_language: str = "English"):
     """Create and return Claude SDK integration instance"""
-    return ClaudeSDKIntegration(anki_client)
+    return ClaudeSDKIntegration(anki_client, target_language, banned_language)

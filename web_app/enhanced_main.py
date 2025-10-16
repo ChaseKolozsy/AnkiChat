@@ -389,6 +389,20 @@ async def home(request: Request):
         <!-- Deck Selection -->
         <div class="card hidden" id="deck-selection">
             <h2>Select Study Decks</h2>
+
+            <!-- Language Configuration -->
+            <div style="margin-bottom: 20px; padding: 15px; background: #262626; border-radius: 8px; border-left: 3px solid #9333ea;">
+                <h3 style="color: #9333ea; margin-bottom: 15px;">🌍 Language Configuration</h3>
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label for="target-language">Target Language (learning):</label>
+                    <input type="text" id="target-language" placeholder="e.g., Hungarian, Spanish, Japanese" value="Hungarian">
+                </div>
+                <div class="form-group">
+                    <label for="banned-language">Banned Language (avoid using):</label>
+                    <input type="text" id="banned-language" placeholder="e.g., English, French" value="English">
+                </div>
+            </div>
+
             <div style="margin-bottom: 20px;">
                 <h3 style="color: #0084ff; margin-bottom: 10px;">📚 Grammar Deck (Main Session)</h3>
                 <div id="deck-list"></div>
@@ -933,6 +947,10 @@ async def home(request: Request):
                     console.warn('Failed to fetch initial counts, proceeding anyway');
                 }
 
+                // Get language configuration
+                const targetLanguage = document.getElementById('target-language').value.trim() || 'Hungarian';
+                const bannedLanguage = document.getElementById('banned-language').value.trim() || 'English';
+
                 // Start grammar session (uses existing dual-session endpoint but only starts grammar)
                 const response = await fetch('/api/start-dual-session', {
                     method: 'POST',
@@ -940,7 +958,9 @@ async def home(request: Request):
                     body: JSON.stringify({
                         username: currentUser,
                         grammar_deck_id: selectedGrammarDeck.id,
-                        vocabulary_deck_id: selectedVocabularyDeck.id
+                        vocabulary_deck_id: selectedVocabularyDeck.id,
+                        target_language: targetLanguage,
+                        banned_language: bannedLanguage
                     })
                 });
 
@@ -2474,9 +2494,16 @@ async def start_dual_session(request: Request):
         username = data.get("username")
         grammar_deck_id = data.get("grammar_deck_id")
         vocabulary_deck_id = data.get("vocabulary_deck_id")
+        target_language = data.get("target_language", "Hungarian")
+        banned_language = data.get("banned_language", "English")
 
-        if not claude_integration:
-            return JSONResponse({"success": False, "error": "Claude integration not available"})
+        # Recreate claude_integration with language parameters
+        # This ensures the integration uses the correct languages for this session
+        claude_integration = create_claude_sdk_integration(
+            anki_client,
+            target_language=target_language,
+            banned_language=banned_language
+        )
 
         current_user = username
         current_deck_id = grammar_deck_id
@@ -2487,10 +2514,12 @@ async def start_dual_session(request: Request):
         # Start grammar session
         result = await claude_integration.start_grammar_session(grammar_deck_id)
 
-        # Add deck info to result for frontend
+        # Add deck info and language config to result for frontend
         if result.get('success'):
             result['grammar_deck_id'] = grammar_deck_id
             result['vocabulary_deck_id'] = vocabulary_deck_id
+            result['target_language'] = target_language
+            result['banned_language'] = banned_language
 
         return JSONResponse(result)
 
