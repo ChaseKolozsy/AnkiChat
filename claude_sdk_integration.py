@@ -162,6 +162,21 @@ class ClaudeSDKIntegration:
         }
         return language_tags.get(language, "vocabulary-definition")
 
+    def _get_vocabulary_notetype(self, language: str) -> str:
+        """Get the vocabulary notetype name for a given language (no spaces)"""
+        # Language-specific vocabulary notetypes (concatenated, no spaces)
+        vocabulary_notetypes = {
+            "Hungarian": "HungarianVocabularyNote",
+            "Cebuano": "CebuanoVocabularyNote",
+            "Spanish": "SpanishVocabularyNote",
+            "French": "FrenchVocabularyNote",
+            "German": "GermanVocabularyNote",
+            "Japanese": "JapaneseVocabularyNote",
+            "Korean": "KoreanVocabularyNote",
+            "Mandarin": "MandarinVocabularyNote",
+        }
+        return vocabulary_notetypes.get(language, f"{language}VocabularyNote")
+
     def set_vocabulary_deck(self, deck_id: int):
         """Optionally override the vocabulary deck ID to monitor."""
         try:
@@ -224,7 +239,7 @@ CRITICAL INSTRUCTIONS FOR WORD DEFINITION:
 
    Call mcp__anki-api__create_card with:
    - username: "chase"
-   - note_type: "{self.target_language} Vocabulary Note"
+   - note_type: "{self._get_vocabulary_notetype(self.target_language)}"
    - deck_id: [USE_VOCABULARY_DECK_ID_FROM_PROMPT_OR_1]
    - fields: {{
        "Word": "[THE_LEMMA_BASE_FORM_ONLY]",
