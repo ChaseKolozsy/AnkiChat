@@ -41,6 +41,24 @@ claude_integration = None
 anki_client = None  # This would be initialized with actual client
 
 
+def load_language_config() -> Dict[str, str]:
+    """Load language configuration from language_config.json in current working directory"""
+    config_path = os.path.join(os.getcwd(), 'language_config.json')
+    try:
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+            return {
+                'target_language': config.get('target_language', 'Hungarian'),
+                'banned_language': config.get('banned_language', 'English')
+            }
+    except FileNotFoundError:
+        logger.warning(f"language_config.json not found at {config_path}, using defaults")
+        return {'target_language': 'Hungarian', 'banned_language': 'English'}
+    except Exception as e:
+        logger.error(f"Error loading language config: {e}")
+        return {'target_language': 'Hungarian', 'banned_language': 'English'}
+
+
 def cleanup_on_exit():
     """Synchronous cleanup function for atexit and signal handlers"""
     global claude_integration
@@ -535,6 +553,26 @@ async def home(request: Request):
         // Cached credentials for on-demand sync (simple XOR encryption for basic obfuscation)
         let cachedCredentials = null;
         const encryptionKey = "AnkiChatWebSync2024"; // Simple key for XOR
+
+        // Load language configuration on page load
+        async function loadLanguageConfig() {
+            try {
+                const response = await fetch('/api/language-config');
+                if (response.ok) {
+                    const config = await response.json();
+                    document.getElementById('target-language').value = config.target_language || 'Hungarian';
+                    document.getElementById('banned-language').value = config.banned_language || 'English';
+                    console.log('Language config loaded:', config);
+                } else {
+                    console.warn('Failed to load language config, using defaults');
+                }
+            } catch (error) {
+                console.error('Error loading language config:', error);
+            }
+        }
+
+        // Load language config when page loads
+        loadLanguageConfig();
 
         // Simple XOR encryption/decryption for credential caching
         function simpleEncrypt(text) {
@@ -3112,6 +3150,13 @@ async def get_study_counts_endpoint(request: Request):
 
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/api/language-config")
+async def get_language_config():
+    """Get language configuration from language_config.json"""
+    config = load_language_config()
+    return JSONResponse(config)
+
 
 @app.post("/api/login-and-sync")
 async def login_and_sync_endpoint(request: Request):
